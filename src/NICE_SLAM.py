@@ -59,11 +59,11 @@ class NICE_SLAM():
 
         self.scale = cfg['scale']
         # =======================传递bound参数给上面的decoder和self=======================
-        # 疑问：bound参数是什么？
+        # TODO 疑问：bound参数是什么？
         self.load_bound(cfg)
         # =======================加载预训练网络和初始化网格=======================
         # 如果是nice-slam就执行if，不然就是iMAP*，执行else
-        # 疑问：
+        # TODO 疑问：
         #   1. MLP网络应该是固定的？否则加载预训练网络的时候，参数对应不上？？？
         #   2. 如何进行预训练，pt文件里面包括了哪些内容？
         if self.nice:
@@ -77,7 +77,7 @@ class NICE_SLAM():
             mp.set_start_method('spawn', force=True)
         except RuntimeError:
             pass
-
+        # =======================继续各种类变量初始化操作=======================
         self.frame_reader = get_dataset(cfg, args, self.scale)
         self.n_img = len(self.frame_reader)
         self.estimate_c2w_list = torch.zeros((self.n_img, 4, 4))
@@ -101,6 +101,13 @@ class NICE_SLAM():
         self.shared_decoders = self.shared_decoders.to(
             self.cfg['mapping']['device'])
         self.shared_decoders.share_memory()
+        # 下面是比较关键的几个类变量
+        # Renderer渲染了深度图、彩色图、occupancy等，还有regulation操作
+        # Mesher用于从给定的三维场景表示中提取网格
+        # Logger很明显是用来输出某些信息的
+        # Mapper论文中提到的mapping thread
+        # Tracker论文中提到的tracking thread
+        # TODO 疑问：这里和之前的feature grid是什么关系？
         self.renderer = Renderer(cfg, args, self)
         self.mesher = Mesher(cfg, args, self)
         self.logger = Logger(cfg, args, self)
@@ -220,7 +227,7 @@ class NICE_SLAM():
         color_grid_len = cfg['grid_len']['color']
         self.color_grid_len = color_grid_len
 
-        # 疑问：这里初始化的是维度和xyz轴的单位长度吗？
+        # TODO 疑问：这里初始化的是维度和xyz轴的单位长度吗？
         c = {}
         c_dim = cfg['model']['c_dim']
         xyz_len = self.bound[:, 1] - self.bound[:, 0]
@@ -228,6 +235,11 @@ class NICE_SLAM():
         # If you have questions regarding the swap of axis 0 and 2,
         # please refer to https://github.com/cvg/nice-slam/issues/24
 
+        # =======================对分层特征网格进行初始化=======================
+        # 分别对coarse、middle、fine、color对应的分层特征网格进行初始化，初始化操作基本相同
+        # 初始化的关键操作为：
+        #   1. 构建xxxx_val_shape，它是根据xyz边界生成的；（测试了一下demo的coarse_val_shape=[6, 4, 3]）
+        #   2. 网络的特征形状应该是[B, C, D, H, W]，其中DHW对应XYZ，所以需要进行一个swap
         if self.coarse:
             coarse_key = 'grid_coarse'
             coarse_val_shape = list(
@@ -271,7 +283,7 @@ class NICE_SLAM():
         Args:
             rank (int): Thread ID.
         """
-
+        # TODO 疑问：为什么要等待mapping的第一帧好了才能够开始tracking呢？
         # should wait until the mapping of first frame is finished
         while (1):
             if self.mapping_first_frame[0] == 1:
@@ -305,6 +317,7 @@ class NICE_SLAM():
         Dispatch Threads.
         """
 
+        # 从这里开始，分别启动tracking、mapping、coarse mapping的线程
         processes = []
         for rank in range(3):
             if rank == 0:
