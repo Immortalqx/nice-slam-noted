@@ -89,8 +89,11 @@ class Tracker(object):
         c2w = get_camera_from_tensor(camera_tensor)
         Wedge = self.ignore_edge_W
         Hedge = self.ignore_edge_H
+
+        # 从图像区域获取 n 条光线
         batch_rays_o, batch_rays_d, batch_gt_depth, batch_gt_color = get_samples(
             Hedge, H - Hedge, Wedge, W - Wedge, batch_size, H, W, fx, fy, cx, cy, c2w, gt_depth, gt_color, self.device)
+
         if self.nice:
             # should pre-filter those out of bounding box depth value
             with torch.no_grad():
@@ -104,11 +107,14 @@ class Tracker(object):
             batch_gt_depth = batch_gt_depth[inside_mask]
             batch_gt_color = batch_gt_color[inside_mask]
 
+        # 渲染一批光线的颜色、深度和不确定性。
         ret = self.renderer.render_batch_ray(
             self.c, self.decoders, batch_rays_d, batch_rays_o, self.device, stage='color', gt_depth=batch_gt_depth)
         depth, uncertainty, color = ret
 
         uncertainty = uncertainty.detach()
+
+        # 通过论文上面的公式计算loss
         if self.handle_dynamic:
             tmp = torch.abs(batch_gt_depth - depth) / torch.sqrt(uncertainty + 1e-10)
             mask = (tmp < 10 * tmp.median()) & (batch_gt_depth > 0)
@@ -123,6 +129,7 @@ class Tracker(object):
                 batch_gt_color - color)[mask].sum()
             loss += self.w_color_loss * color_loss
 
+        # 反向传播
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
