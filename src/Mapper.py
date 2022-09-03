@@ -84,6 +84,8 @@ class Mapper(object):
         self.frame_reader = get_dataset(
             cfg, args, self.scale, device=self.device)
         self.n_img = len(self.frame_reader)
+
+        # 这里居然专门检测是否是demo，下面有个地方也是。Visualizer生成的是论文pipeline左侧的图
         if 'Demo' not in self.output:  # disable this visualization in demo
             self.visualizer = Visualizer(freq=cfg['mapping']['vis_freq'], inside_freq=cfg['mapping']['vis_inside_freq'],
                                          vis_dir=os.path.join(self.output, 'mapping_vis'), renderer=self.renderer,
@@ -119,43 +121,43 @@ class Mapper(object):
         ones = np.ones_like(points[:, 0]).reshape(-1, 1)
         homo_vertices = np.concatenate(
             [points, ones], axis=1).reshape(-1, 4, 1)
-        cam_cord_homo = w2c@homo_vertices
+        cam_cord_homo = w2c @ homo_vertices
         cam_cord = cam_cord_homo[:, :3]
         K = np.array([[fx, .0, cx], [.0, fy, cy], [.0, .0, 1.0]]).reshape(3, 3)
         cam_cord[:, 0] *= -1
-        uv = K@cam_cord
-        z = uv[:, -1:]+1e-5
-        uv = uv[:, :2]/z
+        uv = K @ cam_cord
+        z = uv[:, -1:] + 1e-5
+        uv = uv[:, :2] / z
         uv = uv.astype(np.float32)
 
         remap_chunk = int(3e4)
         depths = []
         for i in range(0, uv.shape[0], remap_chunk):
             depths += [cv2.remap(depth_np,
-                                 uv[i:i+remap_chunk, 0],
-                                 uv[i:i+remap_chunk, 1],
+                                 uv[i:i + remap_chunk, 0],
+                                 uv[i:i + remap_chunk, 1],
                                  interpolation=cv2.INTER_LINEAR)[:, 0].reshape(-1, 1)]
         depths = np.concatenate(depths, axis=0)
 
         edge = 0
-        mask = (uv[:, 0] < W-edge)*(uv[:, 0] > edge) * \
-            (uv[:, 1] < H-edge)*(uv[:, 1] > edge)
+        mask = (uv[:, 0] < W - edge) * (uv[:, 0] > edge) * \
+               (uv[:, 1] < H - edge) * (uv[:, 1] > edge)
 
         # For ray with depth==0, fill it with maximum depth
         zero_mask = (depths == 0)
         depths[zero_mask] = np.max(depths)
 
         # depth test
-        mask = mask & (0 <= -z[:, :, 0]) & (-z[:, :, 0] <= depths+0.5)
+        mask = mask & (0 <= -z[:, :, 0]) & (-z[:, :, 0] <= depths + 0.5)
         mask = mask.reshape(-1)
 
         # add feature grid near cam center
         ray_o = c2w[:3, 3]
         ray_o = torch.from_numpy(ray_o).unsqueeze(0)
 
-        dist = points_bak-ray_o
-        dist = torch.sum(dist*dist, axis=1)
-        mask2 = dist < 0.5*0.5
+        dist = points_bak - ray_o
+        dist = torch.sum(dist * dist, axis=1)
+        mask2 = dist < 0.5 * 0.5
         mask2 = mask2.cpu().numpy()
         mask = mask | mask2
 
@@ -188,11 +190,11 @@ class Mapper(object):
         gt_depth = gt_depth.reshape(-1, 1)
         gt_depth = gt_depth.repeat(1, N_samples)
         t_vals = torch.linspace(0., 1., steps=N_samples).to(device)
-        near = gt_depth*0.8
-        far = gt_depth+0.5
-        z_vals = near * (1.-t_vals) + far * (t_vals)
+        near = gt_depth * 0.8
+        far = gt_depth + 0.5
+        z_vals = near * (1. - t_vals) + far * (t_vals)
         pts = rays_o[..., None, :] + rays_d[..., None, :] * \
-            z_vals[..., :, None]  # [N_rays, N_samples, 3]
+              z_vals[..., :, None]  # [N_rays, N_samples, 3]
         vertices = pts.reshape(-1, 3).cpu().numpy()
         list_keyframe = []
         for keyframeid, keyframe in enumerate(keyframe_dict):
@@ -201,21 +203,21 @@ class Mapper(object):
             ones = np.ones_like(vertices[:, 0]).reshape(-1, 1)
             homo_vertices = np.concatenate(
                 [vertices, ones], axis=1).reshape(-1, 4, 1)  # (N, 4)
-            cam_cord_homo = w2c@homo_vertices  # (N, 4, 1)=(4,4)*(N, 4, 1)
+            cam_cord_homo = w2c @ homo_vertices  # (N, 4, 1)=(4,4)*(N, 4, 1)
             cam_cord = cam_cord_homo[:, :3]  # (N, 3, 1)
             K = np.array([[fx, .0, cx], [.0, fy, cy],
-                         [.0, .0, 1.0]]).reshape(3, 3)
+                          [.0, .0, 1.0]]).reshape(3, 3)
             cam_cord[:, 0] *= -1
-            uv = K@cam_cord
-            z = uv[:, -1:]+1e-5
-            uv = uv[:, :2]/z
+            uv = K @ cam_cord
+            z = uv[:, -1:] + 1e-5
+            uv = uv[:, :2] / z
             uv = uv.astype(np.float32)
             edge = 20
-            mask = (uv[:, 0] < W-edge)*(uv[:, 0] > edge) * \
-                (uv[:, 1] < H-edge)*(uv[:, 1] > edge)
+            mask = (uv[:, 0] < W - edge) * (uv[:, 0] > edge) * \
+                   (uv[:, 1] < H - edge) * (uv[:, 1] > edge)
             mask = mask & (z[:, :, 0] < 0)
             mask = mask.reshape(-1)
-            percent_inside = mask.sum()/uv.shape[0]
+            percent_inside = mask.sum() / uv.shape[0]
             list_keyframe.append(
                 {'id': keyframeid, 'percent_inside': percent_inside})
 
@@ -227,7 +229,8 @@ class Mapper(object):
             np.array(selected_keyframe_list))[:k])
         return selected_keyframe_list
 
-    def optimize_map(self, num_joint_iters, lr_factor, idx, cur_gt_color, cur_gt_depth, gt_cur_c2w, keyframe_dict, keyframe_list, cur_c2w):
+    def optimize_map(self, num_joint_iters, lr_factor, idx, cur_gt_color, cur_gt_depth, gt_cur_c2w, keyframe_dict,
+                     keyframe_list, cur_c2w):
         """
         Mapping iterations. Sample pixels from selected keyframes,
         then optimize scene representation and camera poses(if local BA enabled).
@@ -253,24 +256,27 @@ class Mapper(object):
         bottom = torch.from_numpy(np.array([0, 0, 0, 1.]).reshape(
             [1, 4])).type(torch.float32).to(device)
 
+        # =======================选择关键帧进行优化=======================
         if len(keyframe_dict) == 0:
             optimize_frame = []
         else:
             if self.keyframe_selection_method == 'global':
-                num = self.mapping_window_size-2
-                optimize_frame = random_select(len(self.keyframe_dict)-1, num)
+                num = self.mapping_window_size - 2
+                optimize_frame = random_select(len(self.keyframe_dict) - 1, num)
+            # 保证局部更新的两个系统设计（一）：选用与当前帧有可视重合区域的关键帧参与几何优化
             elif self.keyframe_selection_method == 'overlap':
-                num = self.mapping_window_size-2
+                num = self.mapping_window_size - 2
                 optimize_frame = self.keyframe_selection_overlap(
                     cur_gt_color, cur_gt_depth, cur_c2w, keyframe_dict[:-1], num)
 
         # add the last keyframe and the current frame(use -1 to denote)
         oldest_frame = None
         if len(keyframe_list) > 0:
-            optimize_frame = optimize_frame + [len(keyframe_list)-1]
+            optimize_frame = optimize_frame + [len(keyframe_list) - 1]
             oldest_frame = min(optimize_frame)
         optimize_frame += [-1]
 
+        # =======================保存关键帧信息=======================
         if self.save_selected_keyframes_info:
             keyframes_info = []
             for id, frame in enumerate(optimize_frame):
@@ -286,7 +292,7 @@ class Mapper(object):
                     {'idx': frame_idx, 'gt_c2w': tmp_gt_c2w, 'est_c2w': tmp_est_c2w})
             self.selected_keyframes[idx] = keyframes_info
 
-        pixs_per_image = self.mapping_pixels//len(optimize_frame)
+        pixs_per_image = self.mapping_pixels // len(optimize_frame)
 
         decoders_para_list = []
         coarse_grid_para = []
@@ -294,6 +300,8 @@ class Mapper(object):
         fine_grid_para = []
         color_grid_para = []
         gt_depth_np = cur_gt_depth.cpu().numpy()
+
+        # =======================选择需要被优化的网格特征=======================
         if self.nice:
             if self.frustum_feature_selection:
                 masked_c_grad = {}
@@ -312,6 +320,7 @@ class Mapper(object):
                         color_grid_para.append(val)
 
                 else:
+                    # 保证局部更新的两个系统设计（二）：只优化当前相机视锥内的网格特征
                     mask = self.get_mask_from_c2w(
                         mask_c2w, key, val.shape[2:], gt_depth_np)
                     mask = torch.from_numpy(mask).permute(2, 1, 0).unsqueeze(
@@ -322,7 +331,7 @@ class Mapper(object):
                     val_grad = Variable(val_grad.to(
                         device), requires_grad=True)
                     masked_c_grad[key] = val_grad
-                    masked_c_grad[key+'mask'] = mask
+                    masked_c_grad[key + 'mask'] = mask
                     if key == 'grid_coarse':
                         coarse_grid_para.append(val_grad)
                     elif key == 'grid_middle':
@@ -332,6 +341,7 @@ class Mapper(object):
                     elif key == 'grid_color':
                         color_grid_para.append(val_grad)
 
+        # =======================保存精细层和颜色层网络的参数=======================
         if self.nice:
             if not self.fix_fine:
                 decoders_para_list += list(
@@ -343,6 +353,8 @@ class Mapper(object):
             # imap*, single MLP
             decoders_para_list += list(self.decoders.parameters())
 
+        # =======================保存每个关键帧的位姿=======================
+        # 但这里保存了ground truth并且也没有用上？
         if self.BA:
             camera_tensor_list = []
             gt_camera_tensor_list = []
@@ -362,6 +374,9 @@ class Mapper(object):
                     gt_camera_tensor = get_tensor_from_camera(gt_c2w)
                     gt_camera_tensor_list.append(gt_camera_tensor)
 
+        # =======================设置优化器{待优化参数，学习率}=======================
+        # TODO 疑问：这里BA才优化camera_tensor_list，但不管时是否BA都有color_grid_para。
+        #           而论文里面写的是BA操作在前两阶段优化的基础上加入了color图和相机位置，这里怎么理解？
         if self.nice:
             if self.BA:
                 # The corresponding lr will be set according to which stage the optimization is in
@@ -388,32 +403,39 @@ class Mapper(object):
             from torch.optim.lr_scheduler import StepLR
             scheduler = StepLR(optimizer, step_size=200, gamma=0.8)
 
+        # =======================分阶段的进行优化=======================
         for joint_iter in range(num_joint_iters):
             if self.nice:
+                # 对这个if语句不是很理解，每次循环内容似乎没有改变？
+                # 从下面的代码看，这里应该是从网格中取出选定和更新的特征
                 if self.frustum_feature_selection:
                     for key, val in c.items():
                         if (self.coarse_mapper and 'coarse' in key) or \
                                 ((not self.coarse_mapper) and ('coarse' not in key)):
                             val_grad = masked_c_grad[key]
-                            mask = masked_c_grad[key+'mask']
+                            mask = masked_c_grad[key + 'mask']
                             val = val.to(device)
                             val[mask] = val_grad
                             c[key] = val
 
+                # 这里不会导致stage一直等于coarse吗？不过测试的时候stage是变化的！
+                # 应该是coarse mapping thread的stage只能是coarse，而middle and fine mapping thread就是变化的！
                 if self.coarse_mapper:
                     self.stage = 'coarse'
-                elif joint_iter <= int(num_joint_iters*self.middle_iter_ratio):
+                elif joint_iter <= int(num_joint_iters * self.middle_iter_ratio):
                     self.stage = 'middle'
-                elif joint_iter <= int(num_joint_iters*self.fine_iter_ratio):
+                elif joint_iter <= int(num_joint_iters * self.fine_iter_ratio):
                     self.stage = 'fine'
                 else:
                     self.stage = 'color'
 
-                optimizer.param_groups[0]['lr'] = cfg['mapping']['stage'][self.stage]['decoders_lr']*lr_factor
-                optimizer.param_groups[1]['lr'] = cfg['mapping']['stage'][self.stage]['coarse_lr']*lr_factor
-                optimizer.param_groups[2]['lr'] = cfg['mapping']['stage'][self.stage]['middle_lr']*lr_factor
-                optimizer.param_groups[3]['lr'] = cfg['mapping']['stage'][self.stage]['fine_lr']*lr_factor
-                optimizer.param_groups[4]['lr'] = cfg['mapping']['stage'][self.stage]['color_lr']*lr_factor
+                # 根据stage来分配学习率
+                # 查看nice_slam的配置文件能够发现，这里是通过设置学习率为0来控制不同stage优化的对象
+                optimizer.param_groups[0]['lr'] = cfg['mapping']['stage'][self.stage]['decoders_lr'] * lr_factor
+                optimizer.param_groups[1]['lr'] = cfg['mapping']['stage'][self.stage]['coarse_lr'] * lr_factor
+                optimizer.param_groups[2]['lr'] = cfg['mapping']['stage'][self.stage]['middle_lr'] * lr_factor
+                optimizer.param_groups[3]['lr'] = cfg['mapping']['stage'][self.stage]['fine_lr'] * lr_factor
+                optimizer.param_groups[4]['lr'] = cfg['mapping']['stage'][self.stage]['color_lr'] * lr_factor
                 if self.BA:
                     if self.stage == 'color':
                         optimizer.param_groups[5]['lr'] = self.BA_cam_lr
@@ -423,10 +445,12 @@ class Mapper(object):
                 if self.BA:
                     optimizer.param_groups[1]['lr'] = self.BA_cam_lr
 
+            # 保存可视化的结果
             if (not (idx == 0 and self.no_vis_on_first_frame)) and ('Demo' not in self.output):
                 self.visualizer.vis(
                     idx, joint_iter, cur_gt_depth, cur_gt_color, cur_c2w, self.c, self.decoders)
 
+            # =======================开始一个阶段的优化=======================
             optimizer.zero_grad()
             batch_rays_d_list = []
             batch_rays_o_list = []
@@ -454,6 +478,7 @@ class Mapper(object):
                     else:
                         c2w = cur_c2w
 
+                # 从图像区域获取 n 条光线
                 batch_rays_o, batch_rays_d, batch_gt_depth, batch_gt_color = get_samples(
                     0, H, 0, W, pixs_per_image, H, W, fx, fy, cx, cy, c2w, gt_depth, gt_color, self.device)
                 batch_rays_o_list.append(batch_rays_o.float())
@@ -471,35 +496,40 @@ class Mapper(object):
                 with torch.no_grad():
                     det_rays_o = batch_rays_o.clone().detach().unsqueeze(-1)  # (N, 3, 1)
                     det_rays_d = batch_rays_d.clone().detach().unsqueeze(-1)  # (N, 3, 1)
-                    t = (self.bound.unsqueeze(0).to(
-                        device)-det_rays_o)/det_rays_d
+                    t = (self.bound.unsqueeze(0).to(device) - det_rays_o) / det_rays_d
                     t, _ = torch.min(torch.max(t, dim=2)[0], dim=1)
                     inside_mask = t >= batch_gt_depth
                 batch_rays_d = batch_rays_d[inside_mask]
                 batch_rays_o = batch_rays_o[inside_mask]
                 batch_gt_depth = batch_gt_depth[inside_mask]
                 batch_gt_color = batch_gt_color[inside_mask]
+            # 根据光线，渲染出深度图、彩色图、不确定性等
             ret = self.renderer.render_batch_ray(c, self.decoders, batch_rays_d,
                                                  batch_rays_o, device, self.stage,
                                                  gt_depth=None if self.coarse_mapper else batch_gt_depth)
             depth, uncertainty, color = ret
 
+            # 根据论文的公式计算损失
             depth_mask = (batch_gt_depth > 0)
-            loss = torch.abs(
-                batch_gt_depth[depth_mask]-depth[depth_mask]).sum()
+            # 几何损失
+            loss = torch.abs(batch_gt_depth[depth_mask] - depth[depth_mask]).sum()
             if ((not self.nice) or (self.stage == 'color')):
+                # 光度损失
                 color_loss = torch.abs(batch_gt_color - color).sum()
-                weighted_color_loss = self.w_color_loss*color_loss
+                weighted_color_loss = self.w_color_loss * color_loss
+                # 两个损失相加
                 loss += weighted_color_loss
 
+            # 难道这里是通过occupancy判断是否是imap吗？（配置文件里面imap的occupancy是false，这里甚至还有一行注释）
             # for imap*, it uses volume density
             regulation = (not self.occupancy)
             if regulation:
                 point_sigma = self.renderer.regulation(
                     c, self.decoders, batch_rays_d, batch_rays_o, batch_gt_depth, device, self.stage)
                 regulation_loss = torch.abs(point_sigma).sum()
-                loss += 0.0005*regulation_loss
+                loss += 0.0005 * regulation_loss
 
+            # 反向传播！这里应该是优化了网络和网格的参数？
             loss.backward(retain_graph=False)
             optimizer.step()
             if not self.nice:
@@ -507,17 +537,19 @@ class Mapper(object):
                 scheduler.step()
             optimizer.zero_grad()
 
+            # 这部分和上面一个if语句对应上了
             # put selected and updated features back to the grid
             if self.nice and self.frustum_feature_selection:
                 for key, val in c.items():
                     if (self.coarse_mapper and 'coarse' in key) or \
                             ((not self.coarse_mapper) and ('coarse' not in key)):
                         val_grad = masked_c_grad[key]
-                        mask = masked_c_grad[key+'mask']
+                        mask = masked_c_grad[key + 'mask']
                         val = val.detach()
                         val[mask] = val_grad.clone().detach()
                         c[key] = val
 
+        # 这里就是更新优化的位姿？
         if self.BA:
             # put the updated camera poses back
             camera_tensor_id = 0
@@ -543,20 +575,22 @@ class Mapper(object):
         cfg = self.cfg
         idx, gt_color, gt_depth, gt_c2w = self.frame_reader[0]
 
+        # TODO 疑问：为什么这里把ground truth给estimate了？？？
         self.estimate_c2w_list[0] = gt_c2w.cpu()
         init = True
         prev_idx = -1
         while (1):
+            # =======================与tracking线程同步=======================
             while True:
                 idx = self.idx[0].clone()
-                if idx == self.n_img-1:
+                if idx == self.n_img - 1:
                     break
                 if self.sync_method == 'strict':
                     if idx % self.every_frame == 0 and idx != prev_idx:
                         break
 
                 elif self.sync_method == 'loose':
-                    if idx == 0 or idx >= prev_idx+self.every_frame//2:
+                    if idx == 0 or idx >= prev_idx + self.every_frame // 2:
                         break
                 elif self.sync_method == 'free':
                     break
@@ -566,17 +600,19 @@ class Mapper(object):
             if self.verbose:
                 print(Fore.GREEN)
                 prefix = 'Coarse ' if self.coarse_mapper else ''
-                print(prefix+"Mapping Frame ", idx.item())
+                print(prefix + "Mapping Frame ", idx.item())
                 print(Style.RESET_ALL)
 
             _, gt_color, gt_depth, gt_c2w = self.frame_reader[idx]
 
+            # =======================判断是否初始化=======================
+            # TODO 疑问：outer_joint_iters是什么？
             if not init:
                 lr_factor = cfg['mapping']['lr_factor']
                 num_joint_iters = cfg['mapping']['iters']
 
                 # here provides a color refinement postprocess
-                if idx == self.n_img-1 and self.color_refine and not self.coarse_mapper:
+                if idx == self.n_img - 1 and self.color_refine and not self.coarse_mapper:
                     outer_joint_iters = 5
                     self.mapping_window_size *= 2
                     self.middle_iter_ratio = 0.0
@@ -596,21 +632,27 @@ class Mapper(object):
                 num_joint_iters = cfg['mapping']['iters_first']
 
             cur_c2w = self.estimate_c2w_list[idx].to(self.device)
-            num_joint_iters = num_joint_iters//outer_joint_iters
+            num_joint_iters = num_joint_iters // outer_joint_iters
+
+            # =======================迭代优化=======================
             for outer_joint_iter in range(outer_joint_iters):
 
                 self.BA = (len(self.keyframe_list) > 4) and cfg['mapping']['BA'] and (
                     not self.coarse_mapper)
 
+                # =======================论文描述的三个阶段优化=======================
+                # 从选定的关键帧中采样像素，然后优化场景表示和相机姿势（如果启用了本地 BA）。
                 _ = self.optimize_map(num_joint_iters, lr_factor, idx, gt_color, gt_depth,
                                       gt_c2w, self.keyframe_dict, self.keyframe_list, cur_c2w=cur_c2w)
+
                 if self.BA:
+                    # 注意这里的_是有数值的，相当于一个正常的变量！
                     cur_c2w = _
                     self.estimate_c2w_list[idx] = cur_c2w
 
                 # add new frame to keyframe set
-                if outer_joint_iter == outer_joint_iters-1:
-                    if (idx % self.keyframe_every == 0 or (idx == self.n_img-2)) \
+                if outer_joint_iter == outer_joint_iters - 1:
+                    if (idx % self.keyframe_every == 0 or (idx == self.n_img - 2)) \
                             and (idx not in self.keyframe_list):
                         self.keyframe_list.append(idx)
                         self.keyframe_dict.append({'gt_c2w': gt_c2w.cpu(), 'idx': idx, 'color': gt_color.cpu(
@@ -623,9 +665,11 @@ class Mapper(object):
             # mapping of first frame is done, can begin tracking
             self.mapping_first_frame[0] = 1
 
+            # =======================从场景表示中提取网格并将网格保存到文件中=======================
+            # coarse level不需要进行这步操作
             if not self.coarse_mapper:
                 if ((not (idx == 0 and self.no_log_on_first_frame)) and idx % self.ckpt_freq == 0) \
-                        or idx == self.n_img-1:
+                        or idx == self.n_img - 1:
                     self.logger.log(idx, self.keyframe_dict, self.keyframe_list,
                                     selected_keyframes=self.selected_keyframes
                                     if self.save_selected_keyframes_info else None)
@@ -635,14 +679,16 @@ class Mapper(object):
 
                 if (idx % self.mesh_freq == 0) and (not (idx == 0 and self.no_mesh_on_first_frame)):
                     mesh_out_file = f'{self.output}/mesh/{idx:05d}_mesh.ply'
-                    self.mesher.get_mesh(mesh_out_file, self.c, self.decoders, self.keyframe_dict, self.estimate_c2w_list,
-                                         idx,  self.device, show_forecast=self.mesh_coarse_level,
+                    self.mesher.get_mesh(mesh_out_file, self.c, self.decoders, self.keyframe_dict,
+                                         self.estimate_c2w_list,
+                                         idx, self.device, show_forecast=self.mesh_coarse_level,
                                          clean_mesh=self.clean_mesh, get_mask_use_all_frames=False)
 
-                if idx == self.n_img-1:
+                if idx == self.n_img - 1:
                     mesh_out_file = f'{self.output}/mesh/final_mesh.ply'
-                    self.mesher.get_mesh(mesh_out_file, self.c, self.decoders, self.keyframe_dict, self.estimate_c2w_list,
-                                         idx,  self.device, show_forecast=self.mesh_coarse_level,
+                    self.mesher.get_mesh(mesh_out_file, self.c, self.decoders, self.keyframe_dict,
+                                         self.estimate_c2w_list,
+                                         idx, self.device, show_forecast=self.mesh_coarse_level,
                                          clean_mesh=self.clean_mesh, get_mask_use_all_frames=False)
                     os.system(
                         f"cp {mesh_out_file} {self.output}/mesh/{idx:05d}_mesh.ply")
@@ -653,5 +699,5 @@ class Mapper(object):
                                              clean_mesh=self.clean_mesh, get_mask_use_all_frames=True)
                     break
 
-            if idx == self.n_img-1:
+            if idx == self.n_img - 1:
                 break
