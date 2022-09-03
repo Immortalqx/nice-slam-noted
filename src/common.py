@@ -47,18 +47,18 @@ def sample_pdf(bins, weights, N_samples, det=False, device='cuda:0'):
         # https://github.com/aliutkus/torchsearchsorted
         from torchsearchsorted import searchsorted
         inds = searchsorted(cdf, u, side='right')
-    below = torch.max(torch.zeros_like(inds-1), inds-1)
-    above = torch.min((cdf.shape[-1]-1) * torch.ones_like(inds), inds)
+    below = torch.max(torch.zeros_like(inds - 1), inds - 1)
+    above = torch.min((cdf.shape[-1] - 1) * torch.ones_like(inds), inds)
     inds_g = torch.stack([below, above], -1)  # (batch, N_samples, 2)
 
     matched_shape = [inds_g.shape[0], inds_g.shape[1], cdf.shape[-1]]
     cdf_g = torch.gather(cdf.unsqueeze(1).expand(matched_shape), 2, inds_g)
     bins_g = torch.gather(bins.unsqueeze(1).expand(matched_shape), 2, inds_g)
 
-    denom = (cdf_g[..., 1]-cdf_g[..., 0])
+    denom = (cdf_g[..., 1] - cdf_g[..., 0])
     denom = torch.where(denom < 1e-5, torch.ones_like(denom), denom)
-    t = (u-cdf_g[..., 0])/denom
-    samples = bins_g[..., 0] + t * (bins_g[..., 1]-bins_g[..., 0])
+    t = (u - cdf_g[..., 0]) / denom
+    samples = bins_g[..., 0] + t * (bins_g[..., 1] - bins_g[..., 0])
 
     return samples
 
@@ -80,7 +80,7 @@ def get_rays_from_uv(i, j, c2w, H, W, fx, fy, cx, cy, device):
         c2w = torch.from_numpy(c2w).to(device)
 
     dirs = torch.stack(
-        [(i-cx)/fx, -(j-cy)/fy, -torch.ones_like(i)], -1).to(device)
+        [(i - cx) / fx, -(j - cy) / fy, -torch.ones_like(i)], -1).to(device)
     dirs = dirs.reshape(-1, 1, 3)
     # Rotate ray directions from camera frame to the world frame
     # dot product, equals to: [c2w.dot(dir) for dir in dirs]
@@ -115,7 +115,7 @@ def get_sample_uv(H0, H1, W0, W1, n, depth, color, device='cuda:0'):
     depth = depth[H0:H1, W0:W1]
     color = color[H0:H1, W0:W1]
     i, j = torch.meshgrid(torch.linspace(
-        W0, W1-1, W1-W0).to(device), torch.linspace(H0, H1-1, H1-H0).to(device))
+        W0, W1 - 1, W1 - W0).to(device), torch.linspace(H0, H1 - 1, H1 - H0).to(device))
     i = i.t()  # transpose
     j = j.t()
     i, j, depth, color = select_uv(i, j, n, depth, color, device=device)
@@ -128,6 +128,7 @@ def get_samples(H0, H1, W0, W1, n, H, W, fx, fy, cx, cy, c2w, depth, color, devi
     c2w is its camera pose and depth/color is the corresponding image tensor.
 
     """
+    # TODO 需要搞清楚这里的操作！
     i, j, sample_depth, sample_color = get_sample_uv(
         H0, H1, W0, W1, n, depth, color, device=device)
     rays_o, rays_d = get_rays_from_uv(i, j, c2w, H, W, fx, fy, cx, cy, device)
@@ -219,8 +220,10 @@ def raw2outputs_nerf_color(raw, z_vals, rays_d, occupancy=False, device='cuda:0'
         weights (tensor, N_rays*N_samples): weights assigned to each sampled color.
     """
 
-    def raw2alpha(raw, dists, act_fn=F.relu): return 1. - \
-        torch.exp(-act_fn(raw)*dists)
+    def raw2alpha(raw, dists, act_fn=F.relu):
+        return 1. - \
+               torch.exp(-act_fn(raw) * dists)
+
     dists = z_vals[..., 1:] - z_vals[..., :-1]
     dists = dists.float()
     dists = torch.cat([dists, torch.Tensor([1e10]).float().to(
@@ -230,18 +233,18 @@ def raw2outputs_nerf_color(raw, z_vals, rays_d, occupancy=False, device='cuda:0'
     dists = dists * torch.norm(rays_d[..., None, :], dim=-1)
     rgb = raw[..., :-1]
     if occupancy:
-        raw[..., 3] = torch.sigmoid(10*raw[..., -1])
+        raw[..., 3] = torch.sigmoid(10 * raw[..., -1])
         alpha = raw[..., -1]
     else:
         # original nerf, volume density
         alpha = raw2alpha(raw[..., -1], dists)  # (N_rays, N_samples)
 
     weights = alpha.float() * torch.cumprod(torch.cat([torch.ones((alpha.shape[0], 1)).to(
-        device).float(), (1.-alpha + 1e-10).float()], -1).float(), -1)[:, :-1]
+        device).float(), (1. - alpha + 1e-10).float()], -1).float(), -1)[:, :-1]
     rgb_map = torch.sum(weights[..., None] * rgb, -2)  # (N_rays, 3)
     depth_map = torch.sum(weights * z_vals, -1)  # (N_rays)
-    tmp = (z_vals-depth_map.unsqueeze(-1))  # (N_rays, N_samples)
-    depth_var = torch.sum(weights*tmp*tmp, dim=1)  # (N_rays)
+    tmp = (z_vals - depth_map.unsqueeze(-1))  # (N_rays, N_samples)
+    depth_var = torch.sum(weights * tmp * tmp, dim=1)  # (N_rays)
     return depth_map, depth_var, rgb_map, weights
 
 
@@ -253,11 +256,11 @@ def get_rays(H, W, fx, fy, cx, cy, c2w, device):
     if isinstance(c2w, np.ndarray):
         c2w = torch.from_numpy(c2w)
     # pytorch's meshgrid has indexing='ij'
-    i, j = torch.meshgrid(torch.linspace(0, W-1, W), torch.linspace(0, H-1, H))
+    i, j = torch.meshgrid(torch.linspace(0, W - 1, W), torch.linspace(0, H - 1, H))
     i = i.t()  # transpose
     j = j.t()
     dirs = torch.stack(
-        [(i-cx)/fx, -(j-cy)/fy, -torch.ones_like(i)], -1).to(device)
+        [(i - cx) / fx, -(j - cy) / fy, -torch.ones_like(i)], -1).to(device)
     dirs = dirs.reshape(H, W, 1, 3)
     # Rotate ray directions from camera frame to the world frame
     # dot product, equals to: [c2w.dot(dir) for dir in dirs]
@@ -278,7 +281,7 @@ def normalize_3d_coordinate(p, bound):
         p (tensor, N*3): normalized coordinate.
     """
     p = p.reshape(-1, 3)
-    p[:, 0] = ((p[:, 0]-bound[0, 0])/(bound[0, 1]-bound[0, 0]))*2-1.0
-    p[:, 1] = ((p[:, 1]-bound[1, 0])/(bound[1, 1]-bound[1, 0]))*2-1.0
-    p[:, 2] = ((p[:, 2]-bound[2, 0])/(bound[2, 1]-bound[2, 0]))*2-1.0
+    p[:, 0] = ((p[:, 0] - bound[0, 0]) / (bound[0, 1] - bound[0, 0])) * 2 - 1.0
+    p[:, 1] = ((p[:, 1] - bound[1, 0]) / (bound[1, 1] - bound[1, 0])) * 2 - 1.0
+    p[:, 2] = ((p[:, 2] - bound[2, 0]) / (bound[2, 1] - bound[2, 0])) * 2 - 1.0
     return p

@@ -93,20 +93,20 @@ class Renderer(object):
         else:
             gt_depth = gt_depth.reshape(-1, 1)
             gt_depth_samples = gt_depth.repeat(1, N_samples)
-            near = gt_depth_samples*0.01
+            near = gt_depth_samples * 0.01
 
         with torch.no_grad():
             det_rays_o = rays_o.clone().detach().unsqueeze(-1)  # (N, 3, 1)
             det_rays_d = rays_d.clone().detach().unsqueeze(-1)  # (N, 3, 1)
             t = (self.bound.unsqueeze(0).to(device) -
-                 det_rays_o)/det_rays_d  # (N, 3, 2)
+                 det_rays_o) / det_rays_d  # (N, 3, 2)
             far_bb, _ = torch.min(torch.max(t, dim=2)[0], dim=1)
             far_bb = far_bb.unsqueeze(-1)
             far_bb += 0.01
 
         if gt_depth is not None:
             # in case the bound is too large
-            far = torch.clamp(far_bb, 0,  torch.max(gt_depth*1.2))
+            far = torch.clamp(far_bb, 0, torch.max(gt_depth * 1.2))
         else:
             far = far_bb
         if N_surface > 0:
@@ -115,9 +115,9 @@ class Renderer(object):
                 gt_depth_surface = gt_depth.repeat(1, N_surface)
                 t_vals_surface = torch.linspace(
                     0., 1., steps=N_surface).to(device)
-                z_vals_surface = 0.95*gt_depth_surface * \
-                    (1.-t_vals_surface) + 1.05 * \
-                    gt_depth_surface * (t_vals_surface)
+                z_vals_surface = 0.95 * gt_depth_surface * \
+                                 (1. - t_vals_surface) + 1.05 * \
+                                 gt_depth_surface * (t_vals_surface)
             else:
                 # since we want to colorize even on regions with no depth sensor readings,
                 # meaning colorize on interpolated geometry region,
@@ -132,29 +132,29 @@ class Renderer(object):
                 t_vals_surface = torch.linspace(
                     0., 1., steps=N_surface).double().to(device)
                 # emperical range 0.05*depth
-                z_vals_surface_depth_none_zero = 0.95*gt_depth_surface * \
-                    (1.-t_vals_surface) + 1.05 * \
-                    gt_depth_surface * (t_vals_surface)
+                z_vals_surface_depth_none_zero = 0.95 * gt_depth_surface * \
+                                                 (1. - t_vals_surface) + 1.05 * \
+                                                 gt_depth_surface * (t_vals_surface)
                 z_vals_surface = torch.zeros(
                     gt_depth.shape[0], N_surface).to(device).double()
                 gt_none_zero_mask = gt_none_zero_mask.squeeze(-1)
                 z_vals_surface[gt_none_zero_mask,
-                               :] = z_vals_surface_depth_none_zero
+                :] = z_vals_surface_depth_none_zero
                 near_surface = 0.001
                 far_surface = torch.max(gt_depth)
                 z_vals_surface_depth_zero = near_surface * \
-                    (1.-t_vals_surface) + far_surface * (t_vals_surface)
+                                            (1. - t_vals_surface) + far_surface * (t_vals_surface)
                 z_vals_surface_depth_zero.unsqueeze(
                     0).repeat((~gt_none_zero_mask).sum(), 1)
                 z_vals_surface[~gt_none_zero_mask,
-                               :] = z_vals_surface_depth_zero
+                :] = z_vals_surface_depth_zero
 
         t_vals = torch.linspace(0., 1., steps=N_samples, device=device)
 
         if not self.lindisp:
-            z_vals = near * (1.-t_vals) + far * (t_vals)
+            z_vals = near * (1. - t_vals) + far * (t_vals)
         else:
-            z_vals = 1./(1./near * (1.-t_vals) + 1./far * (t_vals))
+            z_vals = 1. / (1. / near * (1. - t_vals) + 1. / far * (t_vals))
 
         if self.perturb > 0.:
             # get intervals between samples
@@ -170,11 +170,11 @@ class Renderer(object):
                 torch.cat([z_vals, z_vals_surface.double()], -1), -1)
 
         pts = rays_o[..., None, :] + rays_d[..., None, :] * \
-            z_vals[..., :, None]  # [N_rays, N_samples+N_surface, 3]
+              z_vals[..., :, None]  # [N_rays, N_samples+N_surface, 3]
         pointsf = pts.reshape(-1, 3)
 
         raw = self.eval_points(pointsf, decoders, c, stage, device)
-        raw = raw.reshape(N_rays, N_samples+N_surface, -1)
+        raw = raw.reshape(N_rays, N_samples + N_surface, -1)
 
         depth, uncertainty, color, weights = raw2outputs_nerf_color(
             raw, z_vals, rays_d, occupancy=self.occupancy, device=device)
@@ -186,10 +186,10 @@ class Renderer(object):
             z_vals, _ = torch.sort(torch.cat([z_vals, z_samples], -1), -1)
 
             pts = rays_o[..., None, :] + \
-                rays_d[..., None, :] * z_vals[..., :, None]
+                  rays_d[..., None, :] * z_vals[..., :, None]
             pts = pts.reshape(-1, 3)
             raw = self.eval_points(pts, decoders, c, stage, device)
-            raw = raw.reshape(N_rays, N_samples+N_importance+N_surface, -1)
+            raw = raw.reshape(N_rays, N_samples + N_importance + N_surface, -1)
 
             depth, uncertainty, color, weights = raw2outputs_nerf_color(
                 raw, z_vals, rays_d, occupancy=self.occupancy, device=device)
@@ -218,7 +218,7 @@ class Renderer(object):
             H = self.H
             W = self.W
             rays_o, rays_d = get_rays(
-                H, W, self.fx, self.fy, self.cx, self.cy,  c2w, device)
+                H, W, self.fx, self.fy, self.cx, self.cy, c2w, device)
             rays_o = rays_o.reshape(-1, 3)
             rays_d = rays_d.reshape(-1, 3)
 
@@ -230,13 +230,13 @@ class Renderer(object):
             gt_depth = gt_depth.reshape(-1)
 
             for i in range(0, rays_d.shape[0], ray_batch_size):
-                rays_d_batch = rays_d[i:i+ray_batch_size]
-                rays_o_batch = rays_o[i:i+ray_batch_size]
+                rays_d_batch = rays_d[i:i + ray_batch_size]
+                rays_o_batch = rays_o[i:i + ray_batch_size]
                 if gt_depth is None:
                     ret = self.render_batch_ray(
                         c, decoders, rays_d_batch, rays_o_batch, device, stage, gt_depth=None)
                 else:
-                    gt_depth_batch = gt_depth[i:i+ray_batch_size]
+                    gt_depth_batch = gt_depth[i:i + ray_batch_size]
                     ret = self.render_batch_ray(
                         c, decoders, rays_d_batch, rays_o_batch, device, stage, gt_depth=gt_depth_batch)
 
@@ -276,8 +276,8 @@ class Renderer(object):
         gt_depth = gt_depth.repeat(1, self.N_samples)
         t_vals = torch.linspace(0., 1., steps=self.N_samples).to(device)
         near = 0.0
-        far = gt_depth*0.85
-        z_vals = near * (1.-t_vals) + far * (t_vals)
+        far = gt_depth * 0.85
+        z_vals = near * (1. - t_vals) + far * (t_vals)
         perturb = 1.0
         if perturb > 0.:
             # get intervals between samples
@@ -289,7 +289,7 @@ class Renderer(object):
             z_vals = lower + (upper - lower) * t_rand
 
         pts = rays_o[..., None, :] + rays_d[..., None, :] * \
-            z_vals[..., :, None]  # (N_rays, N_samples, 3)
+              z_vals[..., :, None]  # (N_rays, N_samples, 3)
         pointsf = pts.reshape(-1, 3)
         raw = self.eval_points(pointsf, decoders, c, stage, device)
         sigma = raw[:, -1]

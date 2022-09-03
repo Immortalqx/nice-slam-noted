@@ -197,8 +197,10 @@ class Tracker(object):
                 print("Tracking Frame ", idx.item())
                 print(Style.RESET_ALL)
 
-            # TODO 疑问：这里的if判断的是什么情况？
+            # 疑问：这里的if判断的是什么情况？
+            # 回答：判断是否为第1帧（c2w的初始化），或者gt_camera为True（对应在ground truth下建图的效果，方便做测试？）
             if idx == 0 or self.gt_camera:
+                # TODO 这里为什么不直接设为坐标原点，而是使用第一帧的ground truth？
                 c2w = gt_c2w
                 if not self.no_vis_on_first_frame:
                     self.visualizer.vis(
@@ -206,9 +208,8 @@ class Tracker(object):
 
             else:
                 # 这里计算了相机位姿的一个初始值
-                # TODO 疑问：如果同步方法不是strict，那么这里pre_c2w是没有初始化的，不会有问题吗？
-                #      猜想：最初idx=0，这个分支没有运行，然后先在循环末尾初始化了pre_c2w，而且是使用ground truth初始化的
-                #           但这里为什么不直接设为坐标原点？而是使用第一帧的ground truth？
+                # 疑问：如果同步方法不是strict，那么这里pre_c2w是没有初始化的，不会有问题吗？
+                # 回答：最初idx=0，这个分支没有运行，然后先在循环末尾初始化了pre_c2w，而且是使用ground truth初始化的
                 gt_camera_tensor = get_tensor_from_camera(gt_c2w)
                 if self.const_speed_assumption and idx - 2 >= 0:
                     pre_c2w = pre_c2w.float()
