@@ -90,7 +90,7 @@ class Tracker(object):
         Wedge = self.ignore_edge_W
         Hedge = self.ignore_edge_H
 
-        # 从图像区域获取 n 条光线
+        # 从图像区域获取 n 条光线。这里是根据实际的depth和color进行采样。
         batch_rays_o, batch_rays_d, batch_gt_depth, batch_gt_color = get_samples(
             Hedge, H - Hedge, Wedge, W - Wedge, batch_size, H, W, fx, fy, cx, cy, c2w, gt_depth, gt_color, self.device)
 

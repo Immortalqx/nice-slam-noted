@@ -79,13 +79,13 @@ def get_rays_from_uv(i, j, c2w, H, W, fx, fy, cx, cy, device):
     if isinstance(c2w, np.ndarray):
         c2w = torch.from_numpy(c2w).to(device)
 
-    dirs = torch.stack(
-        [(i - cx) / fx, -(j - cy) / fy, -torch.ones_like(i)], -1).to(device)
+    dirs = torch.stack([(i - cx) / fx, -(j - cy) / fy, -torch.ones_like(i)], -1).to(device)
     dirs = dirs.reshape(-1, 1, 3)
     # Rotate ray directions from camera frame to the world frame
     # dot product, equals to: [c2w.dot(dir) for dir in dirs]
     rays_d = torch.sum(dirs * c2w[:3, :3], -1)
     rays_o = c2w[:3, -1].expand(rays_d.shape)
+    # rays_o和rays_d分别表示rays origin和rays direction
     return rays_o, rays_d
 
 
@@ -112,12 +112,16 @@ def get_sample_uv(H0, H1, W0, W1, n, depth, color, device='cuda:0'):
     Sample n uv coordinates from an image region H0..H1, W0..W1
 
     """
+    # 去除边缘的深度与颜色
     depth = depth[H0:H1, W0:W1]
     color = color[H0:H1, W0:W1]
-    i, j = torch.meshgrid(torch.linspace(
-        W0, W1 - 1, W1 - W0).to(device), torch.linspace(H0, H1 - 1, H1 - H0).to(device))
+    # linspace这里是从start到end，步长为steps均匀采样，其中第n个点的计算公式为：start+(steps-n)*(end-start)/(steps-1)
+    # meshgrid这里是生成网格，参考：https://pytorch.org/docs/stable/generated/torch.meshgrid.html
+    i, j = torch.meshgrid(torch.linspace(W0, W1 - 1, W1 - W0).to(device),
+                          torch.linspace(H0, H1 - 1, H1 - H0).to(device))
     i = i.t()  # transpose
     j = j.t()
+    # 随机采样了N个点，并且打乱了i和j
     i, j, depth, color = select_uv(i, j, n, depth, color, device=device)
     return i, j, depth, color
 
@@ -128,9 +132,10 @@ def get_samples(H0, H1, W0, W1, n, H, W, fx, fy, cx, cy, c2w, depth, color, devi
     c2w is its camera pose and depth/color is the corresponding image tensor.
 
     """
-    # TODO 需要搞清楚这里的操作！
+    # 采样n个uv坐标
     i, j, sample_depth, sample_color = get_sample_uv(
         H0, H1, W0, W1, n, depth, color, device=device)
+    # 根据采样的uv坐标得道对应的光线
     rays_o, rays_d = get_rays_from_uv(i, j, c2w, H, W, fx, fy, cx, cy, device)
     return rays_o, rays_d, sample_depth, sample_color
 
