@@ -200,7 +200,7 @@ class Tracker(object):
             # 疑问：这里的if判断的是什么情况？
             # 回答：判断是否为第1帧（c2w的初始化），或者gt_camera为True（对应在ground truth下建图的效果，方便做测试？）
             if idx == 0 or self.gt_camera:
-                # TODO 这里为什么不直接设为坐标原点，而是使用第一帧的ground truth？
+                # TODO 疑问：这里为什么不直接设为坐标原点，而是使用第一帧的ground truth？
                 c2w = gt_c2w
                 if not self.no_vis_on_first_frame:
                     self.visualizer.vis(

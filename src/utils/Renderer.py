@@ -85,6 +85,7 @@ class Renderer(object):
 
         N_rays = rays_o.shape[0]
 
+        # TODO 疑问：为什么这里要处理gt_depth
         if stage == 'coarse':
             gt_depth = None
         if gt_depth is None:
