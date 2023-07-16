@@ -29,7 +29,7 @@ class Mesher(object):
         self.coarse = cfg['coarse']
         self.scale = cfg['scale']
         self.occupancy = cfg['occupancy']
-
+        
         self.resolution = cfg['meshing']['resolution']
         self.level_set = cfg['meshing']['level_set']
         self.clean_mesh_bound_scale = cfg['meshing']['clean_mesh_bound_scale']
@@ -37,7 +37,7 @@ class Mesher(object):
         self.color_mesh_extraction_method = cfg['meshing']['color_mesh_extraction_method']
         self.get_largest_components = cfg['meshing']['get_largest_components']
         self.depth_test = cfg['meshing']['depth_test']
-
+        
         self.bound = slam.bound
         self.nice = slam.nice
         self.verbose = slam.verbose
@@ -108,12 +108,12 @@ class Mesher(object):
                     uv = uv.float()
                     edge = 0
                     cur_mask_seen = (uv[:, 0] < W - edge) & (
-                            uv[:, 0] > edge) & (uv[:, 1] < H - edge) & (uv[:, 1] > edge)
+                        uv[:, 0] > edge) & (uv[:, 1] < H - edge) & (uv[:, 1] > edge)
                     cur_mask_seen = cur_mask_seen & (z[:, :, 0] < 0)
 
                     edge = -1000
                     cur_mask_forecast = (uv[:, 0] < W - edge) & (
-                            uv[:, 0] > edge) & (uv[:, 1] < H - edge) & (uv[:, 1] > edge)
+                        uv[:, 0] > edge) & (uv[:, 1] < H - edge) & (uv[:, 1] > edge)
                     cur_mask_forecast = cur_mask_forecast & (z[:, :, 0] < 0)
 
                     # forecast
@@ -145,12 +145,12 @@ class Mesher(object):
                     uv = uv.float()
                     edge = 0
                     cur_mask_seen = (uv[:, 0] < W - edge) & (
-                            uv[:, 0] > edge) & (uv[:, 1] < H - edge) & (uv[:, 1] > edge)
+                        uv[:, 0] > edge) & (uv[:, 1] < H - edge) & (uv[:, 1] > edge)
                     cur_mask_seen = cur_mask_seen & (z[:, :, 0] < 0)
 
                     edge = -1000
                     cur_mask_forecast = (uv[:, 0] < W - edge) & (
-                            uv[:, 0] > edge) & (uv[:, 1] < H - edge) & (uv[:, 1] > edge)
+                        uv[:, 0] > edge) & (uv[:, 1] < H - edge) & (uv[:, 1] > edge)
                     cur_mask_forecast = cur_mask_forecast & (z[:, :, 0] < 0)
 
                     if self.depth_test:
@@ -158,8 +158,8 @@ class Mesher(object):
                             device).reshape(1, 1, H, W)
                         vgrid = uv.reshape(1, 1, -1, 2)
                         # normalized to [-1, 1]
-                        vgrid[..., 0] = (vgrid[..., 0] / (W - 1) * 2.0 - 1.0)
-                        vgrid[..., 1] = (vgrid[..., 1] / (H - 1) * 2.0 - 1.0)
+                        vgrid[..., 0] = (vgrid[..., 0] / (W-1) * 2.0 - 1.0)
+                        vgrid[..., 1] = (vgrid[..., 1] / (H-1) * 2.0 - 1.0)
                         depth_sample = F.grid_sample(
                             gt_depth, vgrid, padding_mode='zeros', align_corners=True)
                         depth_sample = depth_sample.reshape(-1)
@@ -173,10 +173,10 @@ class Mesher(object):
                         cur_mask_seen = cur_mask_seen.reshape(-1)
                         proj_depth_seen = - cam_cord[cur_mask_seen, 2].reshape(-1)
                         cur_mask_seen[cur_mask_seen.clone()] &= \
-                            (proj_depth_seen < depth_sample[cur_mask_seen] + 2.4) \
-                            & (depth_sample[cur_mask_seen] - 2.4 < proj_depth_seen)
+                            (proj_depth_seen < depth_sample[cur_mask_seen]+2.4) \
+                            & (depth_sample[cur_mask_seen]-2.4 < proj_depth_seen)
                     else:
-                        max_depth = torch.max(keyframe['depth']) * 1.1
+                        max_depth = torch.max(keyframe['depth'])*1.1
 
                         # forecast
                         cur_mask_forecast = cur_mask_forecast.reshape(-1)
@@ -342,7 +342,7 @@ class Mesher(object):
         grid_points = np.vstack([xx.ravel(), yy.ravel(), zz.ravel()]).T
         grid_points = torch.tensor(np.vstack(
             [xx.ravel(), yy.ravel(), zz.ravel()]).T,
-                                   dtype=torch.float)
+            dtype=torch.float)
 
         return {"grid_points": grid_points, "xyz": [x, y, z]}
 
@@ -386,7 +386,7 @@ class Mesher(object):
             if show_forecast:
 
                 seen_mask, forecast_mask, unseen_mask = self.point_masks(
-                    points, keyframe_dict, estimate_c2w_list, idx, device=device,
+                    points, keyframe_dict, estimate_c2w_list, idx, device=device, 
                     get_mask_use_all_frames=get_mask_use_all_frames)
 
                 forecast_points = points[forecast_mask]
@@ -489,7 +489,7 @@ class Mesher(object):
                                            faces=faces,
                                            process=False)
                     seen_mask, forecast_mask, unseen_mask = self.point_masks(
-                        points, keyframe_dict, estimate_c2w_list, idx, device=device,
+                        points, keyframe_dict, estimate_c2w_list, idx, device=device, 
                         get_mask_use_all_frames=get_mask_use_all_frames)
                     unseen_mask = ~seen_mask
                     face_mask = unseen_mask[mesh.faces].all(axis=1)
@@ -536,17 +536,17 @@ class Mesher(object):
                     sign = -1.0
                     length = 0.1
                     rays_o = torch.from_numpy(
-                        vertices + sign * length * vertex_normals).to(device)
+                        vertices+sign*length*vertex_normals).to(device)
                     color_list = []
                     batch_size = self.ray_batch_size
                     gt_depth = torch.zeros(vertices.shape[0]).to(device)
                     gt_depth[:] = length
                     for i in range(0, rays_d.shape[0], batch_size):
-                        rays_d_batch = rays_d[i:i + batch_size]
-                        rays_o_batch = rays_o[i:i + batch_size]
-                        gt_depth_batch = gt_depth[i:i + batch_size]
+                        rays_d_batch = rays_d[i:i+batch_size]
+                        rays_o_batch = rays_o[i:i+batch_size]
+                        gt_depth_batch = gt_depth[i:i+batch_size]
                         depth, uncertainty, color = self.renderer.render_batch_ray(
-                            c, decoders, rays_d_batch, rays_o_batch, device,
+                            c, decoders, rays_d_batch, rays_o_batch, device, 
                             stage='color', gt_depth=gt_depth_batch)
                         color_list.append(color)
                     color = torch.cat(color_list, dim=0)
@@ -572,3 +572,4 @@ class Mesher(object):
             mesh.export(mesh_out_file)
             if self.verbose:
                 print('Saved mesh at', mesh_out_file)
+                

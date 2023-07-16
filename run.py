@@ -17,7 +17,6 @@ def setup_seed(seed):
 
 
 def main():
-    # =======================参数解析部分=======================
     # setup_seed(20)
 
     parser = argparse.ArgumentParser(
@@ -36,9 +35,9 @@ def main():
 
     cfg = config.load_config(
         args.config, 'configs/nice_slam.yaml' if args.nice else 'configs/imap.yaml')
-    # =======================生成NICE_SLAM实例=======================
+
     slam = NICE_SLAM(cfg, args)
-    # =======================运行NICE_SLAM=======================
+
     slam.run()
 
 

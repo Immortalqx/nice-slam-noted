@@ -64,8 +64,7 @@ class Tracker(object):
         self.frame_loader = DataLoader(
             self.frame_reader, batch_size=1, shuffle=False, num_workers=1)
         self.visualizer = Visualizer(freq=cfg['tracking']['vis_freq'], inside_freq=cfg['tracking']['vis_inside_freq'],
-                                     vis_dir=os.path.join(self.output,
-                                                          'vis' if 'Demo' in self.output else 'tracking_vis'),
+                                     vis_dir=os.path.join(self.output, 'vis' if 'Demo' in self.output else 'tracking_vis'),
                                      renderer=self.renderer, verbose=self.verbose, device=self.device)
         self.H, self.W, self.fx, self.fy, self.cx, self.cy = slam.H, slam.W, slam.fx, slam.fy, slam.cx, slam.cy
 
@@ -89,17 +88,14 @@ class Tracker(object):
         c2w = get_camera_from_tensor(camera_tensor)
         Wedge = self.ignore_edge_W
         Hedge = self.ignore_edge_H
-
-        # 从图像区域获取 n 条光线。这里是根据实际的depth和color进行采样。
         batch_rays_o, batch_rays_d, batch_gt_depth, batch_gt_color = get_samples(
-            Hedge, H - Hedge, Wedge, W - Wedge, batch_size, H, W, fx, fy, cx, cy, c2w, gt_depth, gt_color, self.device)
-
+            Hedge, H-Hedge, Wedge, W-Wedge, batch_size, H, W, fx, fy, cx, cy, c2w, gt_depth, gt_color, self.device)
         if self.nice:
             # should pre-filter those out of bounding box depth value
             with torch.no_grad():
                 det_rays_o = batch_rays_o.clone().detach().unsqueeze(-1)  # (N, 3, 1)
                 det_rays_d = batch_rays_d.clone().detach().unsqueeze(-1)  # (N, 3, 1)
-                t = (self.bound.unsqueeze(0).to(device) - det_rays_o) / det_rays_d
+                t = (self.bound.unsqueeze(0).to(device)-det_rays_o)/det_rays_d
                 t, _ = torch.min(torch.max(t, dim=2)[0], dim=1)
                 inside_mask = t >= batch_gt_depth
             batch_rays_d = batch_rays_d[inside_mask]
@@ -107,29 +103,25 @@ class Tracker(object):
             batch_gt_depth = batch_gt_depth[inside_mask]
             batch_gt_color = batch_gt_color[inside_mask]
 
-        # 渲染一批光线的颜色、深度和不确定性。
         ret = self.renderer.render_batch_ray(
-            self.c, self.decoders, batch_rays_d, batch_rays_o, self.device, stage='color', gt_depth=batch_gt_depth)
+            self.c, self.decoders, batch_rays_d, batch_rays_o,  self.device, stage='color',  gt_depth=batch_gt_depth)
         depth, uncertainty, color = ret
 
         uncertainty = uncertainty.detach()
-
-        # 通过论文上面的公式计算loss
         if self.handle_dynamic:
-            tmp = torch.abs(batch_gt_depth - depth) / torch.sqrt(uncertainty + 1e-10)
-            mask = (tmp < 10 * tmp.median()) & (batch_gt_depth > 0)
+            tmp = torch.abs(batch_gt_depth-depth)/torch.sqrt(uncertainty+1e-10)
+            mask = (tmp < 10*tmp.median()) & (batch_gt_depth > 0)
         else:
             mask = batch_gt_depth > 0
 
-        loss = (torch.abs(batch_gt_depth - depth) /
-                torch.sqrt(uncertainty + 1e-10))[mask].sum()
+        loss = (torch.abs(batch_gt_depth-depth) /
+                torch.sqrt(uncertainty+1e-10))[mask].sum()
 
         if self.use_color_in_tracking:
             color_loss = torch.abs(
                 batch_gt_color - color)[mask].sum()
-            loss += self.w_color_loss * color_loss
+            loss += self.w_color_loss*color_loss
 
-        # 反向传播
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
@@ -144,7 +136,6 @@ class Tracker(object):
             if self.verbose:
                 print('Tracking: update the parameters from mapping')
             self.decoders = copy.deepcopy(self.shared_decoders).to(self.device)
-            # 这里的self.c和self.shared_c应该是保存了网格里的信息
             for key, val in self.shared_c.items():
                 val = val.clone().to(self.device)
                 self.c[key] = val
@@ -158,10 +149,6 @@ class Tracker(object):
         else:
             pbar = tqdm(self.frame_loader)
 
-        # =======================遍历整个数据集进行tracking=======================
-        # 疑问：gt_c2w是数据集pose文件夹下的数据，它ground truth pose吗？它在这里的作用是什么？
-        #      论文上说tracking的loss是公式（9）光度损失和公式（11）调整的几何损失，应该是不需要ground truth的pose？
-        # 回答：这里仅仅是用于展示估计的位姿和真实的位姿之间的差距，不用于计算loss
         for idx, gt_color, gt_depth, gt_c2w in pbar:
             if not self.verbose:
                 pbar.set_description(f"Tracking Frame {idx[0]}")
@@ -171,58 +158,47 @@ class Tracker(object):
             gt_color = gt_color[0]
             gt_c2w = gt_c2w[0]
 
-            # =======================与mapping进行同步=======================
             if self.sync_method == 'strict':
                 # strictly mapping and then tracking
                 # initiate mapping every self.every_frame frames
                 if idx > 0 and (idx % self.every_frame == 1 or self.every_frame == 1):
-                    while self.mapping_idx[0] != idx - 1:
+                    while self.mapping_idx[0] != idx-1:
                         time.sleep(0.1)
-                    pre_c2w = self.estimate_c2w_list[idx - 1].to(device)
+                    pre_c2w = self.estimate_c2w_list[idx-1].to(device)
             elif self.sync_method == 'loose':
                 # mapping idx can be later than tracking idx is within the bound of
                 # [-self.every_frame-self.every_frame//2, -self.every_frame+self.every_frame//2]
-                while self.mapping_idx[0] < idx - self.every_frame - self.every_frame // 2:
+                while self.mapping_idx[0] < idx-self.every_frame-self.every_frame//2:
                     time.sleep(0.1)
             elif self.sync_method == 'free':
                 # pure parallel, if mesh/vis happens may cause inbalance
                 pass
 
-            # =======================从mapping中更新参数=======================
-            # 更新的参数和scene representation相关，应该是网络的参数和场景表征的结果（grid）
             self.update_para_from_mapping()
 
             if self.verbose:
                 print(Fore.MAGENTA)
-                print("Tracking Frame ", idx.item())
+                print("Tracking Frame ",  idx.item())
                 print(Style.RESET_ALL)
 
-            # 疑问：这里的if判断的是什么情况？
-            # 回答：判断是否为第1帧（c2w的初始化），或者gt_camera为True（对应在ground truth下建图的效果，方便做测试？）
             if idx == 0 or self.gt_camera:
-                # TODO 疑问：这里为什么不直接设为坐标原点，而是使用第一帧的ground truth？
                 c2w = gt_c2w
                 if not self.no_vis_on_first_frame:
                     self.visualizer.vis(
                         idx, 0, gt_depth, gt_color, c2w, self.c, self.decoders)
 
             else:
-                # 这里计算了相机位姿的一个初始值
-                # 疑问：如果同步方法不是strict，那么这里pre_c2w是没有初始化的，不会有问题吗？
-                # 回答：最初idx=0，这个分支没有运行，然后先在循环末尾初始化了pre_c2w，而且是使用ground truth初始化的
                 gt_camera_tensor = get_tensor_from_camera(gt_c2w)
-                if self.const_speed_assumption and idx - 2 >= 0:
+                if self.const_speed_assumption and idx-2 >= 0:
                     pre_c2w = pre_c2w.float()
-                    delta = pre_c2w @ self.estimate_c2w_list[idx - 2].to(
+                    delta = pre_c2w@self.estimate_c2w_list[idx-2].to(
                         device).float().inverse()
-                    estimated_new_cam_c2w = delta @ pre_c2w
+                    estimated_new_cam_c2w = delta@pre_c2w
                 else:
                     estimated_new_cam_c2w = pre_c2w
 
                 camera_tensor = get_tensor_from_camera(
                     estimated_new_cam_c2w.detach())
-
-                # TODO 疑问：是否三角分解？这里的用途是确定相机的优化器？
                 if self.seperate_LR:
                     camera_tensor = camera_tensor.to(device).detach()
                     T = camera_tensor[-3:]
@@ -234,7 +210,7 @@ class Tracker(object):
                     cam_para_list_T = [T]
                     cam_para_list_quad = [quad]
                     optimizer_camera = torch.optim.Adam([{'params': cam_para_list_T, 'lr': self.cam_lr},
-                                                         {'params': cam_para_list_quad, 'lr': self.cam_lr * 0.2}])
+                                                         {'params': cam_para_list_quad, 'lr': self.cam_lr*0.2}])
                 else:
                     camera_tensor = Variable(
                         camera_tensor.to(device), requires_grad=True)
@@ -243,11 +219,9 @@ class Tracker(object):
                         cam_para_list, lr=self.cam_lr)
 
                 initial_loss_camera_tensor = torch.abs(
-                    gt_camera_tensor.to(device) - camera_tensor).mean().item()
+                    gt_camera_tensor.to(device)-camera_tensor).mean().item()
                 candidate_cam_tensor = None
                 current_min_loss = 10000000000.
-
-                # 开始优化相机位姿
                 for cam_iter in range(self.num_cam_iters):
                     if self.seperate_LR:
                         camera_tensor = torch.cat([quad, T], 0).to(self.device)
@@ -255,7 +229,6 @@ class Tracker(object):
                     self.visualizer.vis(
                         idx, cam_iter, gt_depth, gt_color, camera_tensor, self.c, self.decoders)
 
-                    # 进行一次相机迭代。 采样像素、渲染深度/颜色、计算损失和反向传播。
                     loss = self.optimize_cam_in_batch(
                         camera_tensor, gt_color, gt_depth, self.tracking_pixels, optimizer_camera)
 
@@ -263,18 +236,15 @@ class Tracker(object):
                         initial_loss = loss
 
                     loss_camera_tensor = torch.abs(
-                        gt_camera_tensor.to(device) - camera_tensor).mean().item()
+                        gt_camera_tensor.to(device)-camera_tensor).mean().item()
                     if self.verbose:
-                        if cam_iter == self.num_cam_iters - 1:
+                        if cam_iter == self.num_cam_iters-1:
                             print(
                                 f'Re-rendering loss: {initial_loss:.2f}->{loss:.2f} ' +
                                 f'camera tensor error: {initial_loss_camera_tensor:.4f}->{loss_camera_tensor:.4f}')
-
-                    # 更新最小loss
                     if loss < current_min_loss:
                         current_min_loss = loss
                         candidate_cam_tensor = camera_tensor.clone().detach()
-                # 拼接得到c2w，看起来是矩阵T
                 bottom = torch.from_numpy(np.array([0, 0, 0, 1.]).reshape(
                     [1, 4])).type(torch.float32).to(self.device)
                 c2w = get_camera_from_tensor(

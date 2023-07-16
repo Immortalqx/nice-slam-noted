@@ -41,7 +41,7 @@ class Nerf_positional_embedding(torch.nn.Module):
         self.log_sampling = log_sampling
         self.include_input = True
         self.periodic_fns = [torch.sin, torch.cos]
-        self.max_freq_log2 = multires - 1
+        self.max_freq_log2 = multires-1
         self.num_freqs = multires
         self.max_freq = self.max_freq_log2
         self.N_freqs = self.num_freqs
@@ -52,11 +52,11 @@ class Nerf_positional_embedding(torch.nn.Module):
             x.dim())
 
         if self.log_sampling:
-            freq_bands = 2. ** torch.linspace(0.,
-                                              self.max_freq, steps=self.N_freqs)
+            freq_bands = 2.**torch.linspace(0.,
+                                            self.max_freq, steps=self.N_freqs)
         else:
             freq_bands = torch.linspace(
-                2. ** 0., 2. ** self.max_freq, steps=self.N_freqs)
+                2.**0., 2.**self.max_freq, steps=self.N_freqs)
         output = []
         if self.include_input:
             output.append(x)
@@ -141,7 +141,7 @@ class MLP(nn.Module):
                 multires = 5
                 self.embedder = Nerf_positional_embedding(
                     multires, log_sampling=False)
-            embedding_size = multires * 6 + 3
+            embedding_size = multires*6+3
         elif pos_embedding_method == 'fc_relu':
             embedding_size = 93
             self.embedder = DenseLayer(dim, embedding_size, activation='relu')
@@ -149,8 +149,7 @@ class MLP(nn.Module):
         self.pts_linears = nn.ModuleList(
             [DenseLayer(embedding_size, hidden_size, activation="relu")] +
             [DenseLayer(hidden_size, hidden_size, activation="relu") if i not in self.skips
-             else DenseLayer(hidden_size + embedding_size, hidden_size, activation="relu") for i in
-             range(n_blocks - 1)])
+             else DenseLayer(hidden_size + embedding_size, hidden_size, activation="relu") for i in range(n_blocks-1)])
 
         if self.color:
             self.output_linear = DenseLayer(
@@ -236,7 +235,7 @@ class MLP_no_xyz(nn.Module):
         self.pts_linears = nn.ModuleList(
             [DenseLayer(hidden_size, hidden_size, activation="relu")] +
             [DenseLayer(hidden_size, hidden_size, activation="relu") if i not in self.skips
-             else DenseLayer(hidden_size + c_dim, hidden_size, activation="relu") for i in range(n_blocks - 1)])
+             else DenseLayer(hidden_size + c_dim, hidden_size, activation="relu") for i in range(n_blocks-1)])
 
         if self.color:
             self.output_linear = DenseLayer(
@@ -292,7 +291,7 @@ class NICE(nn.Module):
     """
 
     def __init__(self, dim=3, c_dim=32,
-                 coarse_grid_len=2.0, middle_grid_len=0.16, fine_grid_len=0.16,
+                 coarse_grid_len=2.0,  middle_grid_len=0.16, fine_grid_len=0.16,
                  color_grid_len=0.16, hidden_size=32, coarse=False, pos_embedding_method='fourier'):
         super().__init__()
 
@@ -303,7 +302,7 @@ class NICE(nn.Module):
         self.middle_decoder = MLP(name='middle', dim=dim, c_dim=c_dim, color=False,
                                   skips=[2], n_blocks=5, hidden_size=hidden_size,
                                   grid_len=middle_grid_len, pos_embedding_method=pos_embedding_method)
-        self.fine_decoder = MLP(name='fine', dim=dim, c_dim=c_dim * 2, color=False,
+        self.fine_decoder = MLP(name='fine', dim=dim, c_dim=c_dim*2, color=False,
                                 skips=[2], n_blocks=5, hidden_size=hidden_size,
                                 grid_len=fine_grid_len, concat_feature=True, pos_embedding_method=pos_embedding_method)
         self.color_decoder = MLP(name='color', dim=dim, c_dim=c_dim, color=True,
@@ -332,12 +331,12 @@ class NICE(nn.Module):
             raw = torch.zeros(fine_occ.shape[0], 4).to(device).float()
             middle_occ = self.middle_decoder(p, c_grid)
             middle_occ = middle_occ.squeeze(0)
-            raw[..., -1] = fine_occ + middle_occ
+            raw[..., -1] = fine_occ+middle_occ
             return raw
         elif stage == 'color':
             fine_occ = self.fine_decoder(p, c_grid)
             raw = self.color_decoder(p, c_grid)
             middle_occ = self.middle_decoder(p, c_grid)
             middle_occ = middle_occ.squeeze(0)
-            raw[..., -1] = fine_occ + middle_occ
+            raw[..., -1] = fine_occ+middle_occ
             return raw
