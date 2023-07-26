@@ -26,15 +26,16 @@ class NICE_SLAM():
     def __init__(self, cfg, args):
 
         self.cfg = cfg
-        self.args = args
+        self.args = args  # 未使用
         self.nice = args.nice
 
         self.coarse = cfg['coarse']
-        self.occupancy = cfg['occupancy']
+        self.occupancy = cfg['occupancy']  # 未使用
         self.low_gpu_mem = cfg['low_gpu_mem']
         self.verbose = cfg['verbose']
-        self.dataset = cfg['dataset']
+        self.dataset = cfg['dataset']  # 未使用
         self.coarse_bound_enlarge = cfg['model']['coarse_bound_enlarge']
+
         if args.output is None:
             self.output = cfg['data']['output']
         else:
@@ -43,10 +44,14 @@ class NICE_SLAM():
         os.makedirs(self.output, exist_ok=True)
         os.makedirs(self.ckptsdir, exist_ok=True)
         os.makedirs(f'{self.output}/mesh', exist_ok=True)
+
         self.H, self.W, self.fx, self.fy, self.cx, self.cy = cfg['cam']['H'], cfg['cam'][
             'W'], cfg['cam']['fx'], cfg['cam']['fy'], cfg['cam']['cx'], cfg['cam']['cy']
+        # 根据配置文件，后续处理会进行缩放或者裁剪；
+        # 而这会影响相机内参，所以需要更新一下内参
         self.update_cam()
 
+        # 根据配置文件构建网络模型
         model = config.get_model(cfg, nice=self.nice)
         self.shared_decoders = model
 
@@ -54,8 +59,8 @@ class NICE_SLAM():
 
         self.load_bound(cfg)
         if self.nice:
-            self.load_pretrain(cfg)
-            self.grid_init(cfg)
+            self.load_pretrain(cfg)  # 加载预训练参数到shared_decoders中
+            self.grid_init(cfg)  # 初始化了hierarchical feature网格
         else:
             self.shared_c = {}
 
@@ -65,11 +70,11 @@ class NICE_SLAM():
         except RuntimeError:
             pass
 
+        # 下面使用了大量的share_memory，它允许数据处于一种特殊的状态，可以在不需要拷贝的情况下，任何进程都可以直接使用该数据。
         self.frame_reader = get_dataset(cfg, args, self.scale)
         self.n_img = len(self.frame_reader)
         self.estimate_c2w_list = torch.zeros((self.n_img, 4, 4))
         self.estimate_c2w_list.share_memory_()
-
         self.gt_c2w_list = torch.zeros((self.n_img, 4, 4))
         self.gt_c2w_list.share_memory_()
         self.idx = torch.zeros((1)).int()
@@ -81,13 +86,16 @@ class NICE_SLAM():
         self.mapping_idx.share_memory_()
         self.mapping_cnt = torch.zeros((1)).int()  # counter for mapping
         self.mapping_cnt.share_memory_()
+
         for key, val in self.shared_c.items():
             val = val.to(self.cfg['mapping']['device'])
             val.share_memory_()
             self.shared_c[key] = val
+
         self.shared_decoders = self.shared_decoders.to(
             self.cfg['mapping']['device'])
         self.shared_decoders.share_memory()
+
         self.renderer = Renderer(cfg, args, self)
         self.mesher = Mesher(cfg, args, self)
         self.logger = Logger(cfg, args, self)
@@ -95,6 +103,7 @@ class NICE_SLAM():
         if self.coarse:
             self.coarse_mapper = Mapper(cfg, args, self, coarse_mapper=True)
         self.tracker = Tracker(cfg, args, self)
+
         self.print_output_desc()
 
     def print_output_desc(self):
@@ -257,6 +266,9 @@ class NICE_SLAM():
             rank (int): Thread ID.
         """
 
+        # 这里就类似一定要进行了初始化、确定了世界坐标系，才能够进行Tracking；
+        # 而NICE-SLAM这样的NeRF based SLAM初始化的办法就是把第一帧图像拍摄的相机位置作为世界坐标系原点，然后先建图再去跟踪；
+        # 看NICE-SLAM论文的话就会发现，位姿都是优化出来的，而没有建图（没有训练一个网络出来）的话就也没办法优化出位姿。
         # should wait until the mapping of first frame is finished
         while (1):
             if self.mapping_first_frame[0] == 1:
