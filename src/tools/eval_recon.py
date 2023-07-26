@@ -62,7 +62,6 @@ def get_align_transformation(rec_meshfile, gt_meshfile):
 def check_proj(points, W, H, fx, fy, cx, cy, c2w):
     """
     Check if points can be projected into the camera view.
-
     """
     c2w = c2w.copy()
     c2w[:3, 1] *= -1.0
@@ -75,23 +74,22 @@ def check_proj(points, W, H, fx, fy, cx, cy, c2w):
     ones = torch.ones_like(points[:, 0]).reshape(-1, 1).cuda()
     homo_points = torch.cat(
         [points, ones], dim=1).reshape(-1, 4, 1).cuda().float()  # (N, 4)
-    cam_cord_homo = w2c@homo_points  # (N, 4, 1)=(4,4)*(N, 4, 1)
+    cam_cord_homo = w2c @ homo_points  # (N, 4, 1)=(4,4)*(N, 4, 1)
     cam_cord = cam_cord_homo[:, :3]  # (N, 3, 1)
     cam_cord[:, 0] *= -1
-    uv = K.float()@cam_cord.float()
-    z = uv[:, -1:]+1e-5
-    uv = uv[:, :2]/z
+    uv = K.float() @ cam_cord.float()
+    z = uv[:, -1:] + 1e-5
+    uv = uv[:, :2] / z
     uv = uv.float().squeeze(-1).cpu().numpy()
     edge = 0
     mask = (0 <= -z[:, 0, 0].cpu().numpy()) & (uv[:, 0] < W -
-                                               edge) & (uv[:, 0] > edge) & (uv[:, 1] < H-edge) & (uv[:, 1] > edge)
+                                               edge) & (uv[:, 0] > edge) & (uv[:, 1] < H - edge) & (uv[:, 1] > edge)
     return mask.sum() > 0
 
 
 def calc_3d_metric(rec_meshfile, gt_meshfile, align=True):
     """
     3D reconstruction metric.
-
     """
     mesh_rec = trimesh.load(rec_meshfile, process=False)
     mesh_gt = trimesh.load(gt_meshfile, process=False)
@@ -131,15 +129,14 @@ def get_cam_position(gt_meshfile):
 def calc_2d_metric(rec_meshfile, gt_meshfile, align=True, n_imgs=1000):
     """
     2D reconstruction metric, depth L1 loss.
-
     """
     H = 500
     W = 500
     focal = 300
     fx = focal
     fy = focal
-    cx = H/2.0-0.5
-    cy = W/2.0-0.5
+    cx = H / 2.0 - 0.5
+    cy = W / 2.0 - 0.5
 
     gt_mesh = o3d.io.read_triangle_mesh(gt_meshfile)
     rec_mesh = o3d.io.read_triangle_mesh(rec_meshfile)
@@ -168,7 +165,7 @@ def calc_2d_metric(rec_meshfile, gt_meshfile, align=True, n_imgs=1000):
             ty = round(random.uniform(-10000, +10000), 2)
             tz = round(random.uniform(-10000, +10000), 2)
             target = [tx, ty, tz]
-            target = np.array(target)-np.array(origin)
+            target = np.array(target) - np.array(origin)
             c2w = viewmatrix(target, up, origin)
             tmp = np.eye(4)
             tmp[:3, :] = c2w
@@ -187,27 +184,27 @@ def calc_2d_metric(rec_meshfile, gt_meshfile, align=True, n_imgs=1000):
         ctr.set_constant_z_far(20)
         ctr.convert_from_pinhole_camera_parameters(param)
 
-        vis.add_geometry(gt_mesh, reset_bounding_box=True,)
+        vis.add_geometry(gt_mesh, reset_bounding_box=True, )
         ctr.convert_from_pinhole_camera_parameters(param)
         vis.poll_events()
         vis.update_renderer()
         gt_depth = vis.capture_depth_float_buffer(True)
         gt_depth = np.asarray(gt_depth)
-        vis.remove_geometry(gt_mesh, reset_bounding_box=True,)
+        vis.remove_geometry(gt_mesh, reset_bounding_box=True, )
 
-        vis.add_geometry(rec_mesh, reset_bounding_box=True,)
+        vis.add_geometry(rec_mesh, reset_bounding_box=True, )
         ctr.convert_from_pinhole_camera_parameters(param)
         vis.poll_events()
         vis.update_renderer()
         ours_depth = vis.capture_depth_float_buffer(True)
         ours_depth = np.asarray(ours_depth)
-        vis.remove_geometry(rec_mesh, reset_bounding_box=True,)
+        vis.remove_geometry(rec_mesh, reset_bounding_box=True, )
 
-        errors += [np.abs(gt_depth-ours_depth).mean()]
+        errors += [np.abs(gt_depth - ours_depth).mean()]
 
     errors = np.array(errors)
     # from m to cm
-    print('Depth L1: ', errors.mean()*100)
+    print('Depth L1: ', errors.mean() * 100)
 
 
 if __name__ == '__main__':

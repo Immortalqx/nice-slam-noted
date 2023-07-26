@@ -6,7 +6,6 @@ import torch
 class Logger(object):
     """
     Save checkpoints to file.
-
     """
 
     def __init__(self, cfg, args, slam

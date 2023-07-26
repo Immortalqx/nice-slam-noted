@@ -47,7 +47,7 @@ class NICE_SLAM():
             'W'], cfg['cam']['fx'], cfg['cam']['fy'], cfg['cam']['cx'], cfg['cam']['cy']
         self.update_cam()
 
-        model = config.get_model(cfg,  nice=self.nice)
+        model = config.get_model(cfg, nice=self.nice)
         self.shared_decoders = model
 
         self.scale = cfg['scale']
@@ -120,17 +120,17 @@ class NICE_SLAM():
             crop_size = self.cfg['cam']['crop_size']
             sx = crop_size[1] / self.W
             sy = crop_size[0] / self.H
-            self.fx = sx*self.fx
-            self.fy = sy*self.fy
-            self.cx = sx*self.cx
-            self.cy = sy*self.cy
+            self.fx = sx * self.fx
+            self.fy = sy * self.fy
+            self.cx = sx * self.cx
+            self.cy = sy * self.cy
             self.W = crop_size[1]
             self.H = crop_size[0]
 
         # croping will change H, W, cx, cy, so need to change here
         if self.cfg['cam']['crop_edge'] > 0:
-            self.H -= self.cfg['cam']['crop_edge']*2
-            self.W -= self.cfg['cam']['crop_edge']*2
+            self.H -= self.cfg['cam']['crop_edge'] * 2
+            self.W -= self.cfg['cam']['crop_edge'] * 2
             self.cx -= self.cfg['cam']['crop_edge']
             self.cy -= self.cfg['cam']['crop_edge']
 
@@ -143,18 +143,18 @@ class NICE_SLAM():
         """
         # scale the bound if there is a global scaling factor
         self.bound = torch.from_numpy(
-            np.array(cfg['mapping']['bound'])*self.scale)
+            np.array(cfg['mapping']['bound']) * self.scale)
         bound_divisible = cfg['grid_len']['bound_divisible']
         # enlarge the bound a bit to allow it divisible by bound_divisible
-        self.bound[:, 1] = (((self.bound[:, 1]-self.bound[:, 0]) /
-                            bound_divisible).int()+1)*bound_divisible+self.bound[:, 0]
+        self.bound[:, 1] = (((self.bound[:, 1] - self.bound[:, 0]) /
+                             bound_divisible).int() + 1) * bound_divisible + self.bound[:, 0]
         if self.nice:
             self.shared_decoders.bound = self.bound
             self.shared_decoders.middle_decoder.bound = self.bound
             self.shared_decoders.fine_decoder.bound = self.bound
             self.shared_decoders.color_decoder.bound = self.bound
             if self.coarse:
-                self.shared_decoders.coarse_decoder.bound = self.bound*self.coarse_bound_enlarge
+                self.shared_decoders.coarse_decoder.bound = self.bound * self.coarse_bound_enlarge
 
     def load_pretrain(self, cfg):
         """
@@ -181,10 +181,10 @@ class NICE_SLAM():
         for key, val in ckpt['model'].items():
             if ('decoder' in key) and ('encoder' not in key):
                 if 'coarse' in key:
-                    key = key[8+7:]
+                    key = key[8 + 7:]
                     middle_dict[key] = val
                 elif 'fine' in key:
-                    key = key[8+5:]
+                    key = key[8 + 5:]
                     fine_dict[key] = val
         self.shared_decoders.middle_decoder.load_state_dict(middle_dict)
         self.shared_decoders.fine_decoder.load_state_dict(fine_dict)
@@ -208,7 +208,7 @@ class NICE_SLAM():
 
         c = {}
         c_dim = cfg['model']['c_dim']
-        xyz_len = self.bound[:, 1]-self.bound[:, 0]
+        xyz_len = self.bound[:, 1] - self.bound[:, 0]
 
         # If you have questions regarding the swap of axis 0 and 2,
         # please refer to https://github.com/cvg/nice-slam/issues/24
@@ -216,7 +216,7 @@ class NICE_SLAM():
         if self.coarse:
             coarse_key = 'grid_coarse'
             coarse_val_shape = list(
-                map(int, (xyz_len*self.coarse_bound_enlarge/coarse_grid_len).tolist()))
+                map(int, (xyz_len * self.coarse_bound_enlarge / coarse_grid_len).tolist()))
             coarse_val_shape[0], coarse_val_shape[2] = coarse_val_shape[2], coarse_val_shape[0]
             self.coarse_val_shape = coarse_val_shape
             val_shape = [1, c_dim, *coarse_val_shape]
@@ -224,7 +224,7 @@ class NICE_SLAM():
             c[coarse_key] = coarse_val
 
         middle_key = 'grid_middle'
-        middle_val_shape = list(map(int, (xyz_len/middle_grid_len).tolist()))
+        middle_val_shape = list(map(int, (xyz_len / middle_grid_len).tolist()))
         middle_val_shape[0], middle_val_shape[2] = middle_val_shape[2], middle_val_shape[0]
         self.middle_val_shape = middle_val_shape
         val_shape = [1, c_dim, *middle_val_shape]
@@ -232,7 +232,7 @@ class NICE_SLAM():
         c[middle_key] = middle_val
 
         fine_key = 'grid_fine'
-        fine_val_shape = list(map(int, (xyz_len/fine_grid_len).tolist()))
+        fine_val_shape = list(map(int, (xyz_len / fine_grid_len).tolist()))
         fine_val_shape[0], fine_val_shape[2] = fine_val_shape[2], fine_val_shape[0]
         self.fine_val_shape = fine_val_shape
         val_shape = [1, c_dim, *fine_val_shape]
@@ -240,7 +240,7 @@ class NICE_SLAM():
         c[fine_key] = fine_val
 
         color_key = 'grid_color'
-        color_val_shape = list(map(int, (xyz_len/color_grid_len).tolist()))
+        color_val_shape = list(map(int, (xyz_len / color_grid_len).tolist()))
         color_val_shape[0], color_val_shape[2] = color_val_shape[2], color_val_shape[0]
         self.color_val_shape = color_val_shape
         val_shape = [1, c_dim, *color_val_shape]
@@ -293,12 +293,12 @@ class NICE_SLAM():
         processes = []
         for rank in range(3):
             if rank == 0:
-                p = mp.Process(target=self.tracking, args=(rank, ))
+                p = mp.Process(target=self.tracking, args=(rank,))
             elif rank == 1:
-                p = mp.Process(target=self.mapping, args=(rank, ))
+                p = mp.Process(target=self.mapping, args=(rank,))
             elif rank == 2:
                 if self.coarse:
-                    p = mp.Process(target=self.coarse_mapping, args=(rank, ))
+                    p = mp.Process(target=self.coarse_mapping, args=(rank,))
                 else:
                     continue
             p.start()

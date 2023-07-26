@@ -60,7 +60,7 @@ class Renderer(object):
         ret = torch.cat(rets, dim=0)
         return ret
 
-    def render_batch_ray(self, c, decoders, rays_d, rays_o, device, stage, gt_depth=None):
+    def render_batch_ray(self, c, decoders, rays_d, rays_o, device, stage, gt_depth=None,tracker_debug=False):
         """
         Render color, depth and uncertainty of a batch of rays.
 
@@ -175,6 +175,9 @@ class Renderer(object):
 
         raw = self.eval_points(pointsf, decoders, c, stage, device)
         raw = raw.reshape(N_rays, N_samples+N_surface, -1)
+
+        if tracker_debug:
+            print(raw)
 
         depth, uncertainty, color, weights = raw2outputs_nerf_color(
             raw, z_vals, rays_d, occupancy=self.occupancy, device=device)

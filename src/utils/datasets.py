@@ -93,7 +93,7 @@ class BaseDataset(Dataset):
         H, W = depth_data.shape
         color_data = cv2.resize(color_data, (W, H))
         color_data = torch.from_numpy(color_data)
-        depth_data = torch.from_numpy(depth_data)*self.scale
+        depth_data = torch.from_numpy(depth_data) * self.scale
         if self.crop_size is not None:
             # follow the pre-processing step in lietorch, actually is resize
             color_data = color_data.permute(2, 0, 1)
@@ -303,7 +303,7 @@ class TUM_RGBD(BaseDataset):
                 inv_pose = np.linalg.inv(c2w)
                 c2w = np.eye(4)
             else:
-                c2w = inv_pose@c2w
+                c2w = inv_pose @ c2w
             c2w[:3, 1] *= -1
             c2w[:3, 2] *= -1
             c2w = torch.from_numpy(c2w).float()

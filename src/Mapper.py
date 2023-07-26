@@ -16,7 +16,6 @@ from src.utils.Visualizer import Visualizer
 class Mapper(object):
     """
     Mapper thread. Note that coarse mapper also uses this code.
-
     """
 
     def __init__(self, cfg, args, slam, coarse_mapper=False
@@ -119,43 +118,43 @@ class Mapper(object):
         ones = np.ones_like(points[:, 0]).reshape(-1, 1)
         homo_vertices = np.concatenate(
             [points, ones], axis=1).reshape(-1, 4, 1)
-        cam_cord_homo = w2c@homo_vertices
+        cam_cord_homo = w2c @ homo_vertices
         cam_cord = cam_cord_homo[:, :3]
         K = np.array([[fx, .0, cx], [.0, fy, cy], [.0, .0, 1.0]]).reshape(3, 3)
         cam_cord[:, 0] *= -1
-        uv = K@cam_cord
-        z = uv[:, -1:]+1e-5
-        uv = uv[:, :2]/z
+        uv = K @ cam_cord
+        z = uv[:, -1:] + 1e-5
+        uv = uv[:, :2] / z
         uv = uv.astype(np.float32)
 
         remap_chunk = int(3e4)
         depths = []
         for i in range(0, uv.shape[0], remap_chunk):
             depths += [cv2.remap(depth_np,
-                                 uv[i:i+remap_chunk, 0],
-                                 uv[i:i+remap_chunk, 1],
+                                 uv[i:i + remap_chunk, 0],
+                                 uv[i:i + remap_chunk, 1],
                                  interpolation=cv2.INTER_LINEAR)[:, 0].reshape(-1, 1)]
         depths = np.concatenate(depths, axis=0)
 
         edge = 0
-        mask = (uv[:, 0] < W-edge)*(uv[:, 0] > edge) * \
-            (uv[:, 1] < H-edge)*(uv[:, 1] > edge)
+        mask = (uv[:, 0] < W - edge) * (uv[:, 0] > edge) * \
+               (uv[:, 1] < H - edge) * (uv[:, 1] > edge)
 
         # For ray with depth==0, fill it with maximum depth
         zero_mask = (depths == 0)
         depths[zero_mask] = np.max(depths)
 
         # depth test
-        mask = mask & (0 <= -z[:, :, 0]) & (-z[:, :, 0] <= depths+0.5)
+        mask = mask & (0 <= -z[:, :, 0]) & (-z[:, :, 0] <= depths + 0.5)
         mask = mask.reshape(-1)
 
         # add feature grid near cam center
         ray_o = c2w[:3, 3]
         ray_o = torch.from_numpy(ray_o).unsqueeze(0)
 
-        dist = points_bak-ray_o
-        dist = torch.sum(dist*dist, axis=1)
-        mask2 = dist < 0.5*0.5
+        dist = points_bak - ray_o
+        dist = torch.sum(dist * dist, axis=1)
+        mask2 = dist < 0.5 * 0.5
         mask2 = mask2.cpu().numpy()
         mask = mask | mask2
 
@@ -188,11 +187,11 @@ class Mapper(object):
         gt_depth = gt_depth.reshape(-1, 1)
         gt_depth = gt_depth.repeat(1, N_samples)
         t_vals = torch.linspace(0., 1., steps=N_samples).to(device)
-        near = gt_depth*0.8
-        far = gt_depth+0.5
-        z_vals = near * (1.-t_vals) + far * (t_vals)
+        near = gt_depth * 0.8
+        far = gt_depth + 0.5
+        z_vals = near * (1. - t_vals) + far * (t_vals)
         pts = rays_o[..., None, :] + rays_d[..., None, :] * \
-            z_vals[..., :, None]  # [N_rays, N_samples, 3]
+              z_vals[..., :, None]  # [N_rays, N_samples, 3]
         vertices = pts.reshape(-1, 3).cpu().numpy()
         list_keyframe = []
         for keyframeid, keyframe in enumerate(keyframe_dict):
@@ -201,21 +200,21 @@ class Mapper(object):
             ones = np.ones_like(vertices[:, 0]).reshape(-1, 1)
             homo_vertices = np.concatenate(
                 [vertices, ones], axis=1).reshape(-1, 4, 1)  # (N, 4)
-            cam_cord_homo = w2c@homo_vertices  # (N, 4, 1)=(4,4)*(N, 4, 1)
+            cam_cord_homo = w2c @ homo_vertices  # (N, 4, 1)=(4,4)*(N, 4, 1)
             cam_cord = cam_cord_homo[:, :3]  # (N, 3, 1)
             K = np.array([[fx, .0, cx], [.0, fy, cy],
-                         [.0, .0, 1.0]]).reshape(3, 3)
+                          [.0, .0, 1.0]]).reshape(3, 3)
             cam_cord[:, 0] *= -1
-            uv = K@cam_cord
-            z = uv[:, -1:]+1e-5
-            uv = uv[:, :2]/z
+            uv = K @ cam_cord
+            z = uv[:, -1:] + 1e-5
+            uv = uv[:, :2] / z
             uv = uv.astype(np.float32)
             edge = 20
-            mask = (uv[:, 0] < W-edge)*(uv[:, 0] > edge) * \
-                (uv[:, 1] < H-edge)*(uv[:, 1] > edge)
+            mask = (uv[:, 0] < W - edge) * (uv[:, 0] > edge) * \
+                   (uv[:, 1] < H - edge) * (uv[:, 1] > edge)
             mask = mask & (z[:, :, 0] < 0)
             mask = mask.reshape(-1)
-            percent_inside = mask.sum()/uv.shape[0]
+            percent_inside = mask.sum() / uv.shape[0]
             list_keyframe.append(
                 {'id': keyframeid, 'percent_inside': percent_inside})
 
@@ -227,7 +226,8 @@ class Mapper(object):
             np.array(selected_keyframe_list))[:k])
         return selected_keyframe_list
 
-    def optimize_map(self, num_joint_iters, lr_factor, idx, cur_gt_color, cur_gt_depth, gt_cur_c2w, keyframe_dict, keyframe_list, cur_c2w):
+    def optimize_map(self, num_joint_iters, lr_factor, idx, cur_gt_color, cur_gt_depth, gt_cur_c2w, keyframe_dict,
+                     keyframe_list, cur_c2w):
         """
         Mapping iterations. Sample pixels from selected keyframes,
         then optimize scene representation and camera poses(if local BA enabled).
@@ -257,17 +257,17 @@ class Mapper(object):
             optimize_frame = []
         else:
             if self.keyframe_selection_method == 'global':
-                num = self.mapping_window_size-2
-                optimize_frame = random_select(len(self.keyframe_dict)-1, num)
+                num = self.mapping_window_size - 2
+                optimize_frame = random_select(len(self.keyframe_dict) - 1, num)
             elif self.keyframe_selection_method == 'overlap':
-                num = self.mapping_window_size-2
+                num = self.mapping_window_size - 2
                 optimize_frame = self.keyframe_selection_overlap(
                     cur_gt_color, cur_gt_depth, cur_c2w, keyframe_dict[:-1], num)
 
         # add the last keyframe and the current frame(use -1 to denote)
         oldest_frame = None
         if len(keyframe_list) > 0:
-            optimize_frame = optimize_frame + [len(keyframe_list)-1]
+            optimize_frame = optimize_frame + [len(keyframe_list) - 1]
             oldest_frame = min(optimize_frame)
         optimize_frame += [-1]
 
@@ -286,7 +286,7 @@ class Mapper(object):
                     {'idx': frame_idx, 'gt_c2w': tmp_gt_c2w, 'est_c2w': tmp_est_c2w})
             self.selected_keyframes[idx] = keyframes_info
 
-        pixs_per_image = self.mapping_pixels//len(optimize_frame)
+        pixs_per_image = self.mapping_pixels // len(optimize_frame)
 
         decoders_para_list = []
         coarse_grid_para = []
@@ -322,7 +322,7 @@ class Mapper(object):
                     val_grad = Variable(val_grad.to(
                         device), requires_grad=True)
                     masked_c_grad[key] = val_grad
-                    masked_c_grad[key+'mask'] = mask
+                    masked_c_grad[key + 'mask'] = mask
                     if key == 'grid_coarse':
                         coarse_grid_para.append(val_grad)
                     elif key == 'grid_middle':
@@ -395,25 +395,25 @@ class Mapper(object):
                         if (self.coarse_mapper and 'coarse' in key) or \
                                 ((not self.coarse_mapper) and ('coarse' not in key)):
                             val_grad = masked_c_grad[key]
-                            mask = masked_c_grad[key+'mask']
+                            mask = masked_c_grad[key + 'mask']
                             val = val.to(device)
                             val[mask] = val_grad
                             c[key] = val
 
                 if self.coarse_mapper:
                     self.stage = 'coarse'
-                elif joint_iter <= int(num_joint_iters*self.middle_iter_ratio):
+                elif joint_iter <= int(num_joint_iters * self.middle_iter_ratio):
                     self.stage = 'middle'
-                elif joint_iter <= int(num_joint_iters*self.fine_iter_ratio):
+                elif joint_iter <= int(num_joint_iters * self.fine_iter_ratio):
                     self.stage = 'fine'
                 else:
                     self.stage = 'color'
 
-                optimizer.param_groups[0]['lr'] = cfg['mapping']['stage'][self.stage]['decoders_lr']*lr_factor
-                optimizer.param_groups[1]['lr'] = cfg['mapping']['stage'][self.stage]['coarse_lr']*lr_factor
-                optimizer.param_groups[2]['lr'] = cfg['mapping']['stage'][self.stage]['middle_lr']*lr_factor
-                optimizer.param_groups[3]['lr'] = cfg['mapping']['stage'][self.stage]['fine_lr']*lr_factor
-                optimizer.param_groups[4]['lr'] = cfg['mapping']['stage'][self.stage]['color_lr']*lr_factor
+                optimizer.param_groups[0]['lr'] = cfg['mapping']['stage'][self.stage]['decoders_lr'] * lr_factor
+                optimizer.param_groups[1]['lr'] = cfg['mapping']['stage'][self.stage]['coarse_lr'] * lr_factor
+                optimizer.param_groups[2]['lr'] = cfg['mapping']['stage'][self.stage]['middle_lr'] * lr_factor
+                optimizer.param_groups[3]['lr'] = cfg['mapping']['stage'][self.stage]['fine_lr'] * lr_factor
+                optimizer.param_groups[4]['lr'] = cfg['mapping']['stage'][self.stage]['color_lr'] * lr_factor
                 if self.BA:
                     if self.stage == 'color':
                         optimizer.param_groups[5]['lr'] = self.BA_cam_lr
@@ -472,7 +472,7 @@ class Mapper(object):
                     det_rays_o = batch_rays_o.clone().detach().unsqueeze(-1)  # (N, 3, 1)
                     det_rays_d = batch_rays_d.clone().detach().unsqueeze(-1)  # (N, 3, 1)
                     t = (self.bound.unsqueeze(0).to(
-                        device)-det_rays_o)/det_rays_d
+                        device) - det_rays_o) / det_rays_d
                     t, _ = torch.min(torch.max(t, dim=2)[0], dim=1)
                     inside_mask = t >= batch_gt_depth
                 batch_rays_d = batch_rays_d[inside_mask]
@@ -486,10 +486,10 @@ class Mapper(object):
 
             depth_mask = (batch_gt_depth > 0)
             loss = torch.abs(
-                batch_gt_depth[depth_mask]-depth[depth_mask]).sum()
+                batch_gt_depth[depth_mask] - depth[depth_mask]).sum()
             if ((not self.nice) or (self.stage == 'color')):
                 color_loss = torch.abs(batch_gt_color - color).sum()
-                weighted_color_loss = self.w_color_loss*color_loss
+                weighted_color_loss = self.w_color_loss * color_loss
                 loss += weighted_color_loss
 
             # for imap*, it uses volume density
@@ -498,7 +498,7 @@ class Mapper(object):
                 point_sigma = self.renderer.regulation(
                     c, self.decoders, batch_rays_d, batch_rays_o, batch_gt_depth, device, self.stage)
                 regulation_loss = torch.abs(point_sigma).sum()
-                loss += 0.0005*regulation_loss
+                loss += 0.0005 * regulation_loss
 
             loss.backward(retain_graph=False)
             optimizer.step()
@@ -513,7 +513,7 @@ class Mapper(object):
                     if (self.coarse_mapper and 'coarse' in key) or \
                             ((not self.coarse_mapper) and ('coarse' not in key)):
                         val_grad = masked_c_grad[key]
-                        mask = masked_c_grad[key+'mask']
+                        mask = masked_c_grad[key + 'mask']
                         val = val.detach()
                         val[mask] = val_grad.clone().detach()
                         c[key] = val
@@ -549,14 +549,14 @@ class Mapper(object):
         while (1):
             while True:
                 idx = self.idx[0].clone()
-                if idx == self.n_img-1:
+                if idx == self.n_img - 1:
                     break
                 if self.sync_method == 'strict':
                     if idx % self.every_frame == 0 and idx != prev_idx:
                         break
 
                 elif self.sync_method == 'loose':
-                    if idx == 0 or idx >= prev_idx+self.every_frame//2:
+                    if idx == 0 or idx >= prev_idx + self.every_frame // 2:
                         break
                 elif self.sync_method == 'free':
                     break
@@ -566,7 +566,7 @@ class Mapper(object):
             if self.verbose:
                 print(Fore.GREEN)
                 prefix = 'Coarse ' if self.coarse_mapper else ''
-                print(prefix+"Mapping Frame ", idx.item())
+                print(prefix + "Mapping Frame ", idx.item())
                 print(Style.RESET_ALL)
 
             _, gt_color, gt_depth, gt_c2w = self.frame_reader[idx]
@@ -576,7 +576,7 @@ class Mapper(object):
                 num_joint_iters = cfg['mapping']['iters']
 
                 # here provides a color refinement postprocess
-                if idx == self.n_img-1 and self.color_refine and not self.coarse_mapper:
+                if idx == self.n_img - 1 and self.color_refine and not self.coarse_mapper:
                     outer_joint_iters = 5
                     self.mapping_window_size *= 2
                     self.middle_iter_ratio = 0.0
@@ -596,7 +596,7 @@ class Mapper(object):
                 num_joint_iters = cfg['mapping']['iters_first']
 
             cur_c2w = self.estimate_c2w_list[idx].to(self.device)
-            num_joint_iters = num_joint_iters//outer_joint_iters
+            num_joint_iters = num_joint_iters // outer_joint_iters
             for outer_joint_iter in range(outer_joint_iters):
 
                 self.BA = (len(self.keyframe_list) > 4) and cfg['mapping']['BA'] and (
@@ -609,8 +609,8 @@ class Mapper(object):
                     self.estimate_c2w_list[idx] = cur_c2w
 
                 # add new frame to keyframe set
-                if outer_joint_iter == outer_joint_iters-1:
-                    if (idx % self.keyframe_every == 0 or (idx == self.n_img-2)) \
+                if outer_joint_iter == outer_joint_iters - 1:
+                    if (idx % self.keyframe_every == 0 or (idx == self.n_img - 2)) \
                             and (idx not in self.keyframe_list):
                         self.keyframe_list.append(idx)
                         self.keyframe_dict.append({'gt_c2w': gt_c2w.cpu(), 'idx': idx, 'color': gt_color.cpu(
@@ -625,7 +625,7 @@ class Mapper(object):
 
             if not self.coarse_mapper:
                 if ((not (idx == 0 and self.no_log_on_first_frame)) and idx % self.ckpt_freq == 0) \
-                        or idx == self.n_img-1:
+                        or idx == self.n_img - 1:
                     self.logger.log(idx, self.keyframe_dict, self.keyframe_list,
                                     selected_keyframes=self.selected_keyframes
                                     if self.save_selected_keyframes_info else None)
@@ -635,14 +635,16 @@ class Mapper(object):
 
                 if (idx % self.mesh_freq == 0) and (not (idx == 0 and self.no_mesh_on_first_frame)):
                     mesh_out_file = f'{self.output}/mesh/{idx:05d}_mesh.ply'
-                    self.mesher.get_mesh(mesh_out_file, self.c, self.decoders, self.keyframe_dict, self.estimate_c2w_list,
-                                         idx,  self.device, show_forecast=self.mesh_coarse_level,
+                    self.mesher.get_mesh(mesh_out_file, self.c, self.decoders, self.keyframe_dict,
+                                         self.estimate_c2w_list,
+                                         idx, self.device, show_forecast=self.mesh_coarse_level,
                                          clean_mesh=self.clean_mesh, get_mask_use_all_frames=False)
 
-                if idx == self.n_img-1:
+                if idx == self.n_img - 1:
                     mesh_out_file = f'{self.output}/mesh/final_mesh.ply'
-                    self.mesher.get_mesh(mesh_out_file, self.c, self.decoders, self.keyframe_dict, self.estimate_c2w_list,
-                                         idx,  self.device, show_forecast=self.mesh_coarse_level,
+                    self.mesher.get_mesh(mesh_out_file, self.c, self.decoders, self.keyframe_dict,
+                                         self.estimate_c2w_list,
+                                         idx, self.device, show_forecast=self.mesh_coarse_level,
                                          clean_mesh=self.clean_mesh, get_mask_use_all_frames=False)
                     os.system(
                         f"cp {mesh_out_file} {self.output}/mesh/{idx:05d}_mesh.ply")
@@ -653,5 +655,5 @@ class Mapper(object):
                                              clean_mesh=self.clean_mesh, get_mask_use_all_frames=True)
                     break
 
-            if idx == self.n_img-1:
+            if idx == self.n_img - 1:
                 break

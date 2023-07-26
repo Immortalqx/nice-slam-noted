@@ -61,19 +61,19 @@ if __name__ == '__main__':
                             save_rendering=args.save_rendering, near=0,
                             estimate_c2w_list=estimate_c2w_list, gt_c2w_list=gt_c2w_list).start()
 
-    for i in tqdm(range(0, N+1)):
+    for i in tqdm(range(0, N + 1)):
         # show every second frame for speed up
         if args.vis_input_frame and i % 2 == 0:
             idx, gt_color, gt_depth, gt_c2w = frame_reader[i]
             depth_np = gt_depth.numpy()
-            color_np = (gt_color.numpy()*255).astype(np.uint8)
-            depth_np = depth_np/np.max(depth_np)*255
+            color_np = (gt_color.numpy() * 255).astype(np.uint8)
+            depth_np = depth_np / np.max(depth_np) * 255
             depth_np = np.clip(depth_np, 0, 255).astype(np.uint8)
             depth_np = cv2.applyColorMap(depth_np, cv2.COLORMAP_JET)
             color_np = np.clip(color_np, 0, 255)
             whole = np.concatenate([color_np, depth_np], axis=0)
             H, W, _ = whole.shape
-            whole = cv2.resize(whole, (W//4, H//4))
+            whole = cv2.resize(whole, (W // 4, H // 4))
             cv2.imshow(f'Input RGB-D Sequence', whole[:, :, ::-1])
             cv2.waitKey(1)
         time.sleep(0.03)

@@ -1,7 +1,7 @@
 from src.conv_onet import models
 
 
-def get_model(cfg,  nice=True):
+def get_model(cfg, nice=True):
     """
     Return the network model.
 

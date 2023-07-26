@@ -25,8 +25,8 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument('--input_mesh', type=str,
                     help='path to the mesh to be culled')
-parser.add_argument('--traj', type=str,  help='path to the trajectory')
-parser.add_argument('--output_mesh', type=str,  help='path to the output mesh')
+parser.add_argument('--traj', type=str, help='path to the trajectory')
+parser.add_argument('--output_mesh', type=str, help='path to the output mesh')
 args = parser.parse_args()
 
 H = 680
@@ -57,17 +57,17 @@ for i in tqdm(range(0, n_imgs, 1)):
     ones = torch.ones_like(points[:, 0]).reshape(-1, 1).cuda()
     homo_points = torch.cat(
         [points, ones], dim=1).reshape(-1, 4, 1).cuda().float()
-    cam_cord_homo = w2c@homo_points
+    cam_cord_homo = w2c @ homo_points
     cam_cord = cam_cord_homo[:, :3]
 
     cam_cord[:, 0] *= -1
-    uv = K.float()@cam_cord.float()
-    z = uv[:, -1:]+1e-5
-    uv = uv[:, :2]/z
+    uv = K.float() @ cam_cord.float()
+    z = uv[:, -1:] + 1e-5
+    uv = uv[:, :2] / z
     uv = uv.float().squeeze(-1).cpu().numpy()
     edge = 0
     mask = (0 <= -z[:, 0, 0].cpu().numpy()) & (uv[:, 0] < W -
-                                               edge) & (uv[:, 0] > edge) & (uv[:, 1] < H-edge) & (uv[:, 1] > edge)
+                                               edge) & (uv[:, 0] > edge) & (uv[:, 1] < H - edge) & (uv[:, 1] > edge)
     whole_mask &= ~mask
 pc = mesh.vertices
 faces = mesh.faces

@@ -9,7 +9,6 @@ class Visualizer(object):
     """
     Visualize intermediate results, render out depth, color and depth uncertainty images.
     It can be called per iteration, which is good for debugging (to see how each tracking/mapping iteration performs).
-
     """
 
     def __init__(self, freq, inside_freq, vis_dir, renderer, verbose, device='cuda:0'):
@@ -43,7 +42,7 @@ class Visualizer(object):
                 if len(c2w_or_camera_tensor.shape) == 1:
                     bottom = torch.from_numpy(
                         np.array([0, 0, 0, 1.]).reshape([1, 4])).type(
-                            torch.float32).to(self.device)
+                        torch.float32).to(self.device)
                     c2w = get_camera_from_tensor(
                         c2w_or_camera_tensor.clone().detach())
                     c2w = torch.cat([c2w, bottom], dim=0)

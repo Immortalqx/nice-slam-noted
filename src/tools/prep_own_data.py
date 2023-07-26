@@ -3,6 +3,7 @@ import json
 import argparse
 import os
 import open3d as o3d
+
 parser = argparse.ArgumentParser(
     description='Arguments for prep own data.'
 )
@@ -40,7 +41,7 @@ max_bound = bounds.get_max_bound()
 
 line = '['
 for i, (mi, ma) in enumerate(zip(min_bound, max_bound)):
-    line += f'[{mi-1.0},{ma+1.0}]'
+    line += f'[{mi - 1.0},{ma + 1.0}]'
     if i != 2:
         line += ','
 line += ']'

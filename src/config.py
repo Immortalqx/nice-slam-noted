@@ -1,7 +1,6 @@
 import yaml
 from src import conv_onet
 
-
 method_dict = {
     'conv_onet': conv_onet
 }
@@ -17,7 +16,6 @@ def load_config(path, default_path=None):
 
     Returns:
         cfg (dict): config dict.
-
     """
     # load configuration from file itself
     with open(path, 'r') as f:
@@ -74,6 +72,6 @@ def get_model(cfg, nice=True):
 
     method = 'conv_onet'
     model = method_dict[method].config.get_model(
-        cfg,  nice=nice)
+        cfg, nice=nice)
 
     return model
