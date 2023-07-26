@@ -105,8 +105,7 @@ class Tracker(object):
             batch_gt_color = batch_gt_color[inside_mask]
 
         ret = self.renderer.render_batch_ray(
-            self.c, self.decoders, batch_rays_d, batch_rays_o, self.device, stage='color', gt_depth=batch_gt_depth,
-            tracker_debug=True)
+            self.c, self.decoders, batch_rays_d, batch_rays_o, self.device, stage='color', gt_depth=batch_gt_depth)
         depth, uncertainty, color = ret
 
         uncertainty = uncertainty.detach()
@@ -124,15 +123,9 @@ class Tracker(object):
                 batch_gt_color - color)[mask].sum()
             loss += self.w_color_loss * color_loss
 
-        # print("before backward")
-        # print(camera_tensor)
-
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
-
-        # print("after backward")
-        # print(camera_tensor)
 
         return loss.item()
 
