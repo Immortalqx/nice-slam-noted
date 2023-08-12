@@ -47,8 +47,8 @@ class NICE_SLAM():
 
         self.H, self.W, self.fx, self.fy, self.cx, self.cy = cfg['cam']['H'], cfg['cam'][
             'W'], cfg['cam']['fx'], cfg['cam']['fy'], cfg['cam']['cx'], cfg['cam']['cy']
-        # 根据配置文件，后续处理会进行缩放或者裁剪；
-        # 而这会影响相机内参，所以需要更新一下内参
+        # 根据配置文件，后续处理会进行缩放或者裁剪,而这会影响相机内参，所以需要更新一下内参
+        # TODO 但是为什么要进行缩放或者裁剪呢？
         self.update_cam()
 
         # 根据配置文件构建网络模型
@@ -57,7 +57,7 @@ class NICE_SLAM():
 
         self.scale = cfg['scale']
 
-        self.load_bound(cfg)
+        self.load_bound(cfg)  # 加载XYZ轴边界
         if self.nice:
             self.load_pretrain(cfg)  # 加载预训练参数到shared_decoders中
             self.grid_init(cfg)  # 初始化了hierarchical feature网格
@@ -71,23 +71,23 @@ class NICE_SLAM():
             pass
 
         # 下面使用了大量的share_memory，它允许数据处于一种特殊的状态，可以在不需要拷贝的情况下，任何进程都可以直接使用该数据。
-        self.frame_reader = get_dataset(cfg, args, self.scale)
-        self.n_img = len(self.frame_reader)
-        self.estimate_c2w_list = torch.zeros((self.n_img, 4, 4))
+        self.frame_reader = get_dataset(cfg, args, self.scale)  # Data loader
+        self.n_img = len(self.frame_reader)  # 图片的数量
+        self.estimate_c2w_list = torch.zeros((self.n_img, 4, 4))  # NICE-SLAM估计的相机位姿，Mapper、Tracker、Logger共享
         self.estimate_c2w_list.share_memory_()
-        self.gt_c2w_list = torch.zeros((self.n_img, 4, 4))
+        self.gt_c2w_list = torch.zeros((self.n_img, 4, 4))  # 相机位姿真值，Tracker、Logger共享（Tracker赋值，Logger打印）
         self.gt_c2w_list.share_memory_()
-        self.idx = torch.zeros((1)).int()
+        self.idx = torch.zeros((1)).int()  # Tracking线程当前帧id，方便Mapper和Tracker同步（Tracker修改，Mapper读取）
         self.idx.share_memory_()
-        self.mapping_first_frame = torch.zeros((1)).int()
+        self.mapping_first_frame = torch.zeros((1)).int()  # 共享给Mapper，标志第一帧是否处理完毕
         self.mapping_first_frame.share_memory_()
         # the id of the newest frame Mapper is processing
-        self.mapping_idx = torch.zeros((1)).int()
+        self.mapping_idx = torch.zeros((1)).int()  # Mapping线程当前帧id，方便Mapper和Tracker同步（Tracker修改，Mapper读取）
         self.mapping_idx.share_memory_()
         self.mapping_cnt = torch.zeros((1)).int()  # counter for mapping
         self.mapping_cnt.share_memory_()
 
-        for key, val in self.shared_c.items():
+        for key, val in self.shared_c.items():  # 只有iMAP模式才进行这个循环
             val = val.to(self.cfg['mapping']['device'])
             val.share_memory_()
             self.shared_c[key] = val
@@ -96,6 +96,7 @@ class NICE_SLAM():
             self.cfg['mapping']['device'])
         self.shared_decoders.share_memory()
 
+        # 初始化NICE-SLAM的几个关键组件
         self.renderer = Renderer(cfg, args, self)
         self.mesher = Mesher(cfg, args, self)
         self.logger = Logger(cfg, args, self)
@@ -125,7 +126,7 @@ class NICE_SLAM():
         such as resize or edge crop.
         """
         # resize the input images to crop_size (variable name used in lietorch)
-        if 'crop_size' in self.cfg['cam']:
+        if 'crop_size' in self.cfg['cam']:  # 是否进行缩放，即调整分辨率
             crop_size = self.cfg['cam']['crop_size']
             sx = crop_size[1] / self.W
             sy = crop_size[0] / self.H
@@ -137,7 +138,7 @@ class NICE_SLAM():
             self.H = crop_size[0]
 
         # croping will change H, W, cx, cy, so need to change here
-        if self.cfg['cam']['crop_edge'] > 0:
+        if self.cfg['cam']['crop_edge'] > 0:  # 是否进行裁切，注意裁切不影响焦距
             self.H -= self.cfg['cam']['crop_edge'] * 2
             self.W -= self.cfg['cam']['crop_edge'] * 2
             self.cx -= self.cfg['cam']['crop_edge']
@@ -173,6 +174,7 @@ class NICE_SLAM():
             cfg (dict): parsed config dict
         """
 
+        # TODO 不是很懂下面这个加载的过程，.pt文件里面包括了描述的信息？
         if self.coarse:
             ckpt = torch.load(cfg['pretrained_decoders']['coarse'],
                               map_location=cfg['mapping']['device'])
@@ -205,6 +207,9 @@ class NICE_SLAM():
         Args:
             cfg (dict): parsed config dict.
         """
+
+        # 加载coarse、middle、fine三个特征网格的网格长度
+        # 在论文中，coarse是2m、middle是32cm、fine是16cm，但是在TUM RGB-D数据集上middle是16cm、fine是8cm
         if self.coarse:
             coarse_grid_len = cfg['grid_len']['coarse']
             self.coarse_grid_len = coarse_grid_len
@@ -215,15 +220,23 @@ class NICE_SLAM():
         color_grid_len = cfg['grid_len']['color']
         self.color_grid_len = color_grid_len
 
-        c = {}
-        c_dim = cfg['model']['c_dim']
-        xyz_len = self.bound[:, 1] - self.bound[:, 0]
+        c = {}  # 保存coarse、middle、fine三个特征网格
+        c_dim = cfg['model']['c_dim']  # 特征网格上每个特征的维度
+        xyz_len = self.bound[:, 1] - self.bound[:, 0]  # xyz轴各自的长度，方便后面计算需要多少个网格
 
         # If you have questions regarding the swap of axis 0 and 2,
         # please refer to https://github.com/cvg/nice-slam/issues/24
 
+        # 为什么需要交换？
+        # 因为val_shape的顺序是XYZ，而特征网格的形状应该是[B, C, D, H, W]，DHW分辨对应ZYX
+        # B这里不知道含义，但数值应该等于1；C就是c_dim，代表每个特征的维度
+
+        # 下面随机初始化了特征网格
         if self.coarse:
             coarse_key = 'grid_coarse'
+            # 这里为什么要enlarge coarse bound，是为了更好的对未观测区域进行预测吗？
+            # 下面得到的是[x,y,z]格式的数据，并且数据类型是int
+            # 比如tensor([6.7200, 4.1600, 3.5200], dtype=torch.float64)*2/2 得到 [6,4,3]
             coarse_val_shape = list(
                 map(int, (xyz_len * self.coarse_bound_enlarge / coarse_grid_len).tolist()))
             coarse_val_shape[0], coarse_val_shape[2] = coarse_val_shape[2], coarse_val_shape[0]
@@ -302,6 +315,7 @@ class NICE_SLAM():
         Dispatch Threads.
         """
 
+        # 逐一启动
         processes = []
         for rank in range(3):
             if rank == 0:

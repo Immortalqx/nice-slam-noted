@@ -18,18 +18,18 @@ from src.utils.Visualizer import Visualizer
 class Tracker(object):
     def __init__(self, cfg, args, slam
                  ):
-        self.cfg = cfg
-        self.args = args
+        self.cfg = cfg  # 未使用
+        self.args = args  # 未使用
 
         self.scale = cfg['scale']
-        self.coarse = cfg['coarse']
-        self.occupancy = cfg['occupancy']
+        self.coarse = cfg['coarse']  # 未使用
+        self.occupancy = cfg['occupancy']  # 未使用
         self.sync_method = cfg['sync_method']
 
         self.idx = slam.idx
         self.nice = slam.nice
         self.bound = slam.bound
-        self.mesher = slam.mesher
+        self.mesher = slam.mesher  # 未使用
         self.output = slam.output
         self.verbose = slam.verbose
         self.shared_c = slam.shared_c
@@ -37,7 +37,7 @@ class Tracker(object):
         self.gt_c2w_list = slam.gt_c2w_list
         self.low_gpu_mem = slam.low_gpu_mem
         self.mapping_idx = slam.mapping_idx
-        self.mapping_cnt = slam.mapping_cnt
+        self.mapping_cnt = slam.mapping_cnt  # 未使用
         self.shared_decoders = slam.shared_decoders
         self.estimate_c2w_list = slam.estimate_c2w_list
 

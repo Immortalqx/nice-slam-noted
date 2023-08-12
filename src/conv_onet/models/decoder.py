@@ -26,7 +26,7 @@ class GaussianFourierFeatureTransform(torch.nn.Module):
     def forward(self, x):
         x = x.squeeze(0)
         assert x.dim() == 2, 'Expected 2D input (got {}D input)'.format(x.dim())
-        x = x @ self._B.to(x.device)
+        x = x @ self._B.to(x.device)  # 这里是矩阵相乘？
         return torch.sin(x)
 
 
@@ -72,6 +72,7 @@ class DenseLayer(nn.Linear):
         self.activation = activation
         super().__init__(in_dim, out_dim, *args, **kwargs)
 
+    # TODO 需要理解这个函数！！！
     def reset_parameters(self) -> None:
         torch.nn.init.xavier_uniform_(
             self.weight, gain=torch.nn.init.calculate_gain(self.activation))
@@ -88,6 +89,9 @@ class Same(nn.Module):
         return x
 
 
+# 相关的链接
+#  论文：https://arxiv.org/pdf/2003.04618.pdf
+#  代码：https://github.com/autonomousvision/convolutional_occupancy_networks/blob/master/src/conv_onet/models/decoder.py
 class MLP(nn.Module):
     """
     Decoder. Point coordinates not only used in sampling the feature grids, but also as MLP input.
@@ -120,11 +124,13 @@ class MLP(nn.Module):
         self.n_blocks = n_blocks
         self.skips = skips
 
+        # TODO 全连接层？这里是想处理feature？
         if c_dim != 0:
             self.fc_c = nn.ModuleList([
                 nn.Linear(c_dim, hidden_size) for i in range(n_blocks)
             ])
 
+        # 定义embedder，对位置进行编码
         if pos_embedding_method == 'fourier':
             embedding_size = 93
             self.embedder = GaussianFourierFeatureTransform(
@@ -146,12 +152,14 @@ class MLP(nn.Module):
             embedding_size = 93
             self.embedder = DenseLayer(dim, embedding_size, activation='relu')
 
+        # 参考nerf-pytorch实现的话，这里才是论文所描述的网络结构，但前面的fc_c又是什么呢？
         self.pts_linears = nn.ModuleList(
             [DenseLayer(embedding_size, hidden_size, activation="relu")] +
             [DenseLayer(hidden_size, hidden_size, activation="relu") if i not in self.skips
              else DenseLayer(hidden_size + embedding_size, hidden_size, activation="relu") for i in
              range(n_blocks - 1)])
 
+        # 输出层？为什么color输出dim=4，是rgb+occ吗
         if self.color:
             self.output_linear = DenseLayer(
                 hidden_size, 4, activation="linear")
@@ -166,6 +174,7 @@ class MLP(nn.Module):
 
         self.sample_mode = sample_mode
 
+    # TODO 这个函数居然也不太看得懂！！！这里又涉及到common.py的一个函数！
     def sample_grid_feature(self, p, c):
         p_nor = normalize_3d_coordinate(p.clone(), self.bound)
         p_nor = p_nor.unsqueeze(0)
@@ -191,6 +200,10 @@ class MLP(nn.Module):
 
         embedded_pts = self.embedder(p)
         h = embedded_pts
+
+        # TODO 不太理解下面的做法
+        #  这里的意思是，位置编码后的h先通过pts_linears，然后再加上fc_c处理过的grid feature？
+        #  去简单看了一下ConvONet的代码，他们的代码里面就有类似这样的处理，但是没有get到为什么要这样做
         for i, l in enumerate(self.pts_linears):
             h = self.pts_linears[i](h)
             h = F.relu(h)
@@ -221,12 +234,13 @@ class MLP_no_xyz(nn.Module):
         grid_len (float): voxel length of its corresponding feature grid.
     """
 
+    # 上面的这个注释看的不太明白，论文里面说coarse-level不需要高斯位置编码，但是Pipeline还是画了coarse level的decoder接受了xyz输入？
     def __init__(self, name='', dim=3, c_dim=128,
                  hidden_size=256, n_blocks=5, leaky=False,
                  sample_mode='bilinear', color=False, skips=[2], grid_len=0.16):
         super().__init__()
         self.name = name
-        self.no_grad_feature = False
+        self.no_grad_feature = False  # 未使用
         self.color = color
         self.grid_len = grid_len
         self.c_dim = c_dim
@@ -264,6 +278,7 @@ class MLP_no_xyz(nn.Module):
         c = self.sample_grid_feature(
             p, c_grid['grid_' + self.name]).transpose(1, 2).squeeze(0)
         h = c
+        # 这里就没有位置编码了，并且pts_linears直接处理grid feature
         for i, l in enumerate(self.pts_linears):
             h = self.pts_linears[i](h)
             h = F.relu(h)
@@ -296,6 +311,7 @@ class NICE(nn.Module):
                  color_grid_len=0.16, hidden_size=32, coarse=False, pos_embedding_method='fourier'):
         super().__init__()
 
+        # coarse-level不需要学习高频的细节，所以这里使用MLP_no_xyz
         if coarse:
             self.coarse_decoder = MLP_no_xyz(
                 name='coarse', dim=dim, c_dim=c_dim, color=False, hidden_size=hidden_size, grid_len=coarse_grid_len)
@@ -314,6 +330,13 @@ class NICE(nn.Module):
         """
             Output occupancy/color in different stage.
         """
+        # 这里的stage应该是按照优化的过程来的，Mapping线程三个阶段的优化，以及Coarse level的单独优化，差不多能对应到下面这几个stage
+        # coarse和middle的过程是一样的，经过decoder得到occupancy
+        # fine stage这里经过fine_decoder得到残差fine_occ，再经过middle_decoder得到occupancy值middle_occ，
+        # 最后返回的是论文Pipeline描述的“Fine-level Occupancy”
+        # 这里除了color stage之外，所有的raw都赋值了torch.zeros(xxx_occ.shape[0], 4).to(device).float()
+        # 这里raw被初始化为shape=torch.Size([xxx_occ.shape[0], 4])的tensor
+        # 我认为raw的每一行表示的应该是[R,G,B,occupancy]，这样做是为了统一格式
         device = f'cuda:{p.get_device()}'
         if stage == 'coarse':
             occ = self.coarse_decoder(p, c_grid)

@@ -192,6 +192,7 @@ def get_tensor_from_camera(RT, Tquad=False):
     return tensor
 
 
+# TODO 下面这个函数很重要
 def raw2outputs_nerf_color(raw, z_vals, rays_d, occupancy=False, device='cuda:0'):
     """
     Transforms model's predictions to semantically meaningful values.
@@ -211,8 +212,7 @@ def raw2outputs_nerf_color(raw, z_vals, rays_d, occupancy=False, device='cuda:0'
     """
 
     def raw2alpha(raw, dists, act_fn=F.relu):
-        return 1. - \
-            torch.exp(-act_fn(raw) * dists)
+        return 1. - torch.exp(-act_fn(raw) * dists)
 
     dists = z_vals[..., 1:] - z_vals[..., :-1]
     dists = dists.float()
@@ -223,7 +223,7 @@ def raw2outputs_nerf_color(raw, z_vals, rays_d, occupancy=False, device='cuda:0'
     dists = dists * torch.norm(rays_d[..., None, :], dim=-1)
     rgb = raw[..., :-1]
     if occupancy:
-        raw[..., 3] = torch.sigmoid(10 * raw[..., -1])
+        raw[..., 3] = torch.sigmoid(10 * raw[..., -1])  # TODO 这里在做什么？？？
         alpha = raw[..., -1]
     else:
         # original nerf, volume density
@@ -238,6 +238,7 @@ def raw2outputs_nerf_color(raw, z_vals, rays_d, occupancy=False, device='cuda:0'
     return depth_map, depth_var, rgb_map, weights
 
 
+# 这个函数和nerf-pytorch几乎一模一样
 def get_rays(H, W, fx, fy, cx, cy, c2w, device):
     """
     Get rays for a whole image.
@@ -246,11 +247,18 @@ def get_rays(H, W, fx, fy, cx, cy, c2w, device):
         c2w = torch.from_numpy(c2w)
     # pytorch's meshgrid has indexing='ij'
     i, j = torch.meshgrid(torch.linspace(0, W - 1, W), torch.linspace(0, H - 1, H))
-    i = i.t()  # transpose
+    # 转置成[H, W]
+    i = i.t()
     j = j.t()
-    dirs = torch.stack(
-        [(i - cx) / fx, -(j - cy) / fy, -torch.ones_like(i)], -1).to(device)
+    # 构造网格点坐标矩阵, 下面最里面的维度是[i,j,-1], shape为[H,W,3]
+    # 这里应该是从image plane到了camera plane, 我认为[i,j,-1]是每条光线的方向向量
+    dirs = torch.stack([(i - cx) / fx, -(j - cy) / fy, -torch.ones_like(i)], -1).to(device)
     dirs = dirs.reshape(H, W, 1, 3)
+
+    # torch.sum的dim参数可以参考: https://blog.csdn.net/qq_31239371/article/details/123668936
+    # 下面torch.sum(vector,dim=-1)是对最里面的维度做累加
+    # 因为H,W,1,3 * 3,3得到了H,W,3,3, 对最里面的维度做累加就能够恢复成旋转到世界坐标系的[H,W,3]
+    # 这里涉及到了广播机制, 可以参考: https://zhuanlan.zhihu.com/p/86997775
     # Rotate ray directions from camera frame to the world frame
     # dot product, equals to: [c2w.dot(dir) for dir in dirs]
     rays_d = torch.sum(dirs * c2w[:3, :3], -1)
@@ -273,4 +281,5 @@ def normalize_3d_coordinate(p, bound):
     p[:, 0] = ((p[:, 0] - bound[0, 0]) / (bound[0, 1] - bound[0, 0])) * 2 - 1.0
     p[:, 1] = ((p[:, 1] - bound[1, 0]) / (bound[1, 1] - bound[1, 0])) * 2 - 1.0
     p[:, 2] = ((p[:, 2] - bound[2, 0]) / (bound[2, 1] - bound[2, 0])) * 2 - 1.0
+    # (...)只能得到[0,1]的数值，需要通过(...)*2-1.0处理到[-1,1]区间
     return p
