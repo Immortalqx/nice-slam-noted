@@ -58,12 +58,13 @@ class Renderer(object):
             if len(ret.shape) == 1 and ret.shape[0] == 4:
                 ret = ret.unsqueeze(0)
 
-            ret[~mask, 3] = 100  # 对于超出边界的部分，这里将occupancy赋值成100 | TODO 有什么用呢？用100表示需要被忽略掉？
+            ret[~mask, 3] = 100  # 对于超出边界的部分，这里将occupancy赋值成100 | 有什么用呢？用100表示需要被忽略掉？
             rets.append(ret)
 
         ret = torch.cat(rets, dim=0)
         return ret
 
+    # 下面这个是类Renderer最重要的函数
     def render_batch_ray(self, c, decoders, rays_d, rays_o, device, stage, gt_depth=None):
         """
         Render color, depth and uncertainty of a batch of rays.
@@ -89,6 +90,8 @@ class Renderer(object):
 
         N_rays = rays_o.shape[0]
 
+        # 不能够在边界之外采样，所以这里需要计算一个范围，让z_vals*rays_d待在边界内
+        # 这里先计算最近的深度，near
         # TODO 为什么coarse不需要gt_depth，并且将N_surface设置为0？
         if stage == 'coarse':
             gt_depth = None
@@ -98,25 +101,26 @@ class Renderer(object):
         else:
             gt_depth = gt_depth.reshape(-1, 1)  # 展开成向量
             gt_depth_samples = gt_depth.repeat(1, N_samples)
-            near = gt_depth_samples * 0.01
-            # TODO 这里为什么这么做？这里相当于每个点的near都不一样？
+            near = gt_depth_samples * 0.01  # 每条射线的near根据这条射线对应的深度确定
 
+        # 计算最远的深度，far
         with torch.no_grad():
             det_rays_o = rays_o.clone().detach().unsqueeze(-1)  # (N, 3, 1)
             det_rays_d = rays_d.clone().detach().unsqueeze(-1)  # (N, 3, 1)
-            t = (self.bound.unsqueeze(0).to(device) -
-                 det_rays_o) / det_rays_d  # (N, 3, 2)
+            # 这个相当于计算一个间隔，在不超过边界的情况下，从射线原点往后能取多少，往前能取多少
+            t = (self.bound.unsqueeze(0).to(device) - det_rays_o) / det_rays_d  # (N, 3, 2)
+            # 因为最后是深度值z_vals*det_rays_d的形式，所以xyz任意一个都不能超过边界，只能取最小的范围
+            # 由于这里我们的相机只能看见前面的东西，所以就忽略掉了torch.max(t, dim=1)的情况
             far_bb, _ = torch.min(torch.max(t, dim=2)[0], dim=1)
             far_bb = far_bb.unsqueeze(-1)
-            far_bb += 0.01
-            # TODO 这里得到的是什么？？？每个点用统一的far，并且还要加上一个0.01，是为了防止far=0的情况吗？
-
+            far_bb += 0.01  # 这里是防止far=0的情况？
         if gt_depth is not None:
             # in case the bound is too large
             far = torch.clamp(far_bb, 0, torch.max(gt_depth * 1.2))  # 限制far的范围在[0,torch.max(gt_depth * 1.2)]内
         else:
             far = far_bb
-        if N_surface > 0:
+
+        if N_surface > 0:  # NICE-SLAM为True
             if False:
                 # this naive implementation downgrades performance
                 gt_depth_surface = gt_depth.repeat(1, N_surface)
@@ -137,33 +141,38 @@ class Renderer(object):
                 gt_none_zero = gt_depth[gt_none_zero_mask]
                 gt_none_zero = gt_none_zero.unsqueeze(-1)
                 gt_depth_surface = gt_none_zero.repeat(1, N_surface)
-                t_vals_surface = torch.linspace(
-                    0., 1., steps=N_surface).double().to(device)
+                t_vals_surface = torch.linspace(0., 1., steps=N_surface).double().to(device)
+                # 论文里面提到在depth附近+-0.05D的区域进行采样，这里是对应的实现
                 # emperical range 0.05*depth
                 z_vals_surface_depth_none_zero = (0.95 * gt_depth_surface * (1. - t_vals_surface) +
                                                   1.05 * gt_depth_surface * (t_vals_surface))
-                # TODO 上面这个公式需要再看一下，对照一下NeRF！
+                # 保存到最终的z_vals_surface中
                 z_vals_surface = torch.zeros(gt_depth.shape[0], N_surface).to(device).double()
                 gt_none_zero_mask = gt_none_zero_mask.squeeze(-1)
                 z_vals_surface[gt_none_zero_mask, :] = z_vals_surface_depth_none_zero
+
                 # 在对没有深度的区域进行处理，得到这部分的采样间隔
                 # 由于没有深度，就指定near和far了
+                # 但是这个看起来是均匀采样，这不就和后面的采样重复了？
                 near_surface = 0.001
                 far_surface = torch.max(gt_depth)
                 z_vals_surface_depth_zero = (near_surface * (1. - t_vals_surface) +
                                              far_surface * (t_vals_surface))
-                # TODO 上面这个公式需要再看一下，对照一下NeRF！
+                # 下面这行代码没有用上吧？这个看起来什么都没有影响？？？
                 z_vals_surface_depth_zero.unsqueeze(0).repeat((~gt_none_zero_mask).sum(), 1)
+                # 保存到最终的z_vals_surface中，没有深度的那行都会被赋值为z_vals_surface_depth_zero
                 z_vals_surface[~gt_none_zero_mask, :] = z_vals_surface_depth_zero
 
         t_vals = torch.linspace(0., 1., steps=N_samples, device=device)
 
         if not self.lindisp:  # 根据深度采样
             z_vals = near * (1. - t_vals) + far * (t_vals)
-        else:  # 根据视差采样
+        else:  # 根据视差采样（不是很懂这个）
             z_vals = 1. / (1. / near * (1. - t_vals) + 1. / far * (t_vals))
 
         if self.perturb > 0.:  # 是否在每个间隔内随机采样
+            # 本来z_vals是[a,b,c]
+            # 这里给处理成了[x,y,z]，其中x取值范围为[a,(a+b)/2]，y取值范围为[(a+b)/2,(b+c)/2]，z取值范围为[(b+c)/2,c]
             # get intervals between samples
             mids = .5 * (z_vals[..., 1:] + z_vals[..., :-1])
             upper = torch.cat([mids, z_vals[..., -1:]], -1)
@@ -173,8 +182,9 @@ class Renderer(object):
             z_vals = lower + (upper - lower) * t_rand
 
         if N_surface > 0:
-            z_vals, _ = torch.sort(torch.cat([z_vals, z_vals_surface.double()], -1), -1)
+            z_vals, _ = torch.sort(torch.cat([z_vals, z_vals_surface.double()], -1), -1)  # 从小到大排序
 
+        # 试着写了一下代码，下面pts的格式是[N_rays, 3, N_samples+N_surface, 1]，可能是我自己写的代码定义有问题？
         pts = rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :, None]  # [N_rays, N_samples+N_surface, 3]
         pointsf = pts.reshape(-1, 3)
 

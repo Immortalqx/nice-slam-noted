@@ -239,6 +239,7 @@ def raw2outputs_nerf_color(raw, z_vals, rays_d, occupancy=False, device='cuda:0'
 
 
 # 这个函数和nerf-pytorch几乎一模一样
+# TODO 目前还不太理解这个函数！！！
 def get_rays(H, W, fx, fy, cx, cy, c2w, device):
     """
     Get rays for a whole image.
