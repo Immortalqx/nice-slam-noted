@@ -47,8 +47,7 @@ class NICE_SLAM():
 
         self.H, self.W, self.fx, self.fy, self.cx, self.cy = cfg['cam']['H'], cfg['cam'][
             'W'], cfg['cam']['fx'], cfg['cam']['fy'], cfg['cam']['cx'], cfg['cam']['cy']
-        # 根据配置文件，后续处理会进行缩放或者裁剪,而这会影响相机内参，所以需要更新一下内参
-        # TODO 但是为什么要进行缩放或者裁剪呢？
+        # 预处理会进行缩放或者裁剪,而这会影响相机内参，所以需要更新一下内参
         self.update_cam()
 
         # 根据配置文件构建网络模型
@@ -64,6 +63,8 @@ class NICE_SLAM():
         else:
             self.shared_c = {}
 
+        # 父进程启动一个新的Python解释器进程。子进程只会继承那些运行进程对象的 run() 方法所需的资源。
+        # 参考链接：https://blog.csdn.net/YNNAD1997/article/details/113829532
         # need to use spawn
         try:
             mp.set_start_method('spawn', force=True)
@@ -152,12 +153,13 @@ class NICE_SLAM():
             cfg (dict): parsed config dict.
         """
         # scale the bound if there is a global scaling factor
-        self.bound = torch.from_numpy(
-            np.array(cfg['mapping']['bound']) * self.scale)
-        bound_divisible = cfg['grid_len']['bound_divisible']
+        self.bound = torch.from_numpy(np.array(cfg['mapping']['bound']) * self.scale)
+
         # enlarge the bound a bit to allow it divisible by bound_divisible
+        bound_divisible = cfg['grid_len']['bound_divisible']
         self.bound[:, 1] = (((self.bound[:, 1] - self.bound[:, 0]) /
                              bound_divisible).int() + 1) * bound_divisible + self.bound[:, 0]
+
         if self.nice:
             self.shared_decoders.bound = self.bound
             self.shared_decoders.middle_decoder.bound = self.bound
@@ -174,7 +176,7 @@ class NICE_SLAM():
             cfg (dict): parsed config dict
         """
 
-        # TODO 不是很懂下面这个加载的过程，.pt文件里面包括了描述的信息？
+        # TODO 对模型加载还不太了解，暂时还没去查文档
         if self.coarse:
             ckpt = torch.load(cfg['pretrained_decoders']['coarse'],
                               map_location=cfg['mapping']['device'])
@@ -235,6 +237,7 @@ class NICE_SLAM():
         if self.coarse:
             coarse_key = 'grid_coarse'
             # 这里为什么要enlarge coarse bound，是为了更好的对未观测区域进行预测吗？
+            # 或者是因为coarse bound的grid_len太大了，这里又要取整数，不扩展就可能因为取整
             # 下面得到的是[x,y,z]格式的数据，并且数据类型是int
             # 比如tensor([6.7200, 4.1600, 3.5200], dtype=torch.float64)*2/2 得到 [6,4,3]
             coarse_val_shape = list(
