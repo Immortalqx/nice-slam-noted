@@ -72,11 +72,14 @@ class DenseLayer(nn.Linear):
         self.activation = activation
         super().__init__(in_dim, out_dim, *args, **kwargs)
 
-    # TODO 需要理解这个函数！！！
+    # TODO 重写reset_parameters是为了用指定的方法进行参数的初始化吗？为什么这么做？
     def reset_parameters(self) -> None:
+        # xavier初始化方法中服从均匀分布U(−a,a) ，分布的参数a = gain * sqrt(6/fan_in+fan_out)
+        # torch.nn.init.calculate_gain("relu")的值为1.4142135623730951，有什么深意？
         torch.nn.init.xavier_uniform_(
             self.weight, gain=torch.nn.init.calculate_gain(self.activation))
         if self.bias is not None:
+            # 全部初始化为0
             torch.nn.init.zeros_(self.bias)
 
 
@@ -124,7 +127,7 @@ class MLP(nn.Module):
         self.n_blocks = n_blocks
         self.skips = skips
 
-        # TODO 全连接层？这里是想处理feature？
+        # TODO 这里为什么这么做？使用fc_c的目的是什么？为什么不用前面定义的DenseLayer？
         if c_dim != 0:
             self.fc_c = nn.ModuleList([
                 nn.Linear(c_dim, hidden_size) for i in range(n_blocks)
@@ -159,7 +162,7 @@ class MLP(nn.Module):
              else DenseLayer(hidden_size + embedding_size, hidden_size, activation="relu") for i in
              range(n_blocks - 1)])
 
-        # 输出层？为什么color输出dim=4，是rgb+occ吗
+        # 输出层，去看NICE类的forward函数就能明白为什么这里color输出的维度是4
         if self.color:
             self.output_linear = DenseLayer(
                 hidden_size, 4, activation="linear")
@@ -174,17 +177,20 @@ class MLP(nn.Module):
 
         self.sample_mode = sample_mode
 
-    # TODO 这个函数居然也不太看得懂！！！这里又涉及到common.py的一个函数！
     def sample_grid_feature(self, p, c):
         p_nor = normalize_3d_coordinate(p.clone(), self.bound)
         p_nor = p_nor.unsqueeze(0)
         vgrid = p_nor[:, :, None, None].float()
+
+        # 下面这个函数可以参考：https://zhuanlan.zhihu.com/p/112030273 和 https://zhuanlan.zhihu.com/p/495758460
+        # 官方文档：https://pytorch.org/docs/stable/generated/torch.nn.functional.grid_sample.html
         # acutally trilinear interpolation if mode = 'bilinear'
         c = F.grid_sample(c, vgrid, padding_mode='border', align_corners=True,
                           mode=self.sample_mode).squeeze(-1).squeeze(-1)
         return c
 
     def forward(self, p, c_grid=None):
+        # 先提取每个点的特征
         if self.c_dim != 0:
             c = self.sample_grid_feature(
                 p, c_grid['grid_' + self.name]).transpose(1, 2).squeeze(0)
@@ -196,13 +202,13 @@ class MLP(nn.Module):
                         p, c_grid['grid_middle']).transpose(1, 2).squeeze(0)
                 c = torch.cat([c, c_middle], dim=1)
 
+        # 对位置进行编码
         p = p.float()
-
         embedded_pts = self.embedder(p)
         h = embedded_pts
 
         # TODO 不太理解下面的做法
-        #  这里的意思是，位置编码后的h先通过pts_linears，然后再加上fc_c处理过的grid feature？
+        #  这里的意思是，位置编码后的h先通过pts_linears，然后再加上fc_c处理过的feature？
         #  去简单看了一下ConvONet的代码，他们的代码里面就有类似这样的处理，但是没有get到为什么要这样做
         for i, l in enumerate(self.pts_linears):
             h = self.pts_linears[i](h)
@@ -211,6 +217,8 @@ class MLP(nn.Module):
                 h = h + self.fc_c[i](c)
             if i in self.skips:
                 h = torch.cat([embedded_pts, h], -1)
+
+        # 输出层，输出的维度和前面的定义有关
         out = self.output_linear(h)
         if not self.color:
             out = out.squeeze(-1)
@@ -247,6 +255,7 @@ class MLP_no_xyz(nn.Module):
         self.n_blocks = n_blocks
         self.skips = skips
 
+        # TODO 第一层的输入就是hidden_size？不应该是c_dim？？？
         self.pts_linears = nn.ModuleList(
             [DenseLayer(hidden_size, hidden_size, activation="relu")] +
             [DenseLayer(hidden_size, hidden_size, activation="relu") if i not in self.skips
